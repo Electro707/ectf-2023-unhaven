@@ -29,14 +29,9 @@
 
 #include "secrets.h"
 
-#include "board_link.h"
+#include "comms.h"
 #include "feature_list.h"
 #include "uart.h"
-
-// this will run if EXAMPLE_AES is defined in the Makefile (see line 54)
-#ifdef EXAMPLE_AES
-#include "aes.h"
-#endif
 
 #define FOB_STATE_PTR 0x3FC00
 #define FLASH_DATA_SIZE         \
@@ -59,13 +54,13 @@ typedef struct
 {
   uint8_t car_id[8];
   uint8_t password[8];
-  uint8_t pin[8];
+  uint8_t pin[8];   // TODO: Change to hash of pin
 } PAIR_PACKET;
 
 // Defines a struct for the format of start message
 typedef struct
 {
-  uint8_t car_id[8];
+  uint8_t car_id[8];    // TODO: Remove as it's redundant with pair car ID
   uint8_t num_active;
   uint8_t features[NUM_FEATURES];
 } FEATURE_DATA;
@@ -78,6 +73,7 @@ typedef struct
   FEATURE_DATA feature_info;
 } FLASH_DATA;
 
+
 /*** Function definitions ***/
 // Core functions - all functionality supported by fob
 void saveFobState(FLASH_DATA *flash_data);
@@ -89,6 +85,8 @@ void startCar(FLASH_DATA *fob_state_ram);
 // Helper functions - receive ack message
 uint8_t receiveAck();
 
+FLASH_DATA fob_state_ram;
+
 /**
  * @brief Main function for the fob example
  *
@@ -99,8 +97,9 @@ uint8_t receiveAck();
  */
 int main(void)
 {
-  FLASH_DATA fob_state_ram;
   FLASH_DATA *fob_state_flash = (FLASH_DATA *)FOB_STATE_PTR;
+
+  //TODO: Start the system timer
 
 // If paired fob, initialize the system information
 #if PAIRED == 1
@@ -128,42 +127,14 @@ int main(void)
     saveFobState(&fob_state_ram);
   }
 
-  // Initialize UART
-  uart_init();
-
-#ifdef EXAMPLE_AES
-  // -------------------------------------------------------------------------
-  // example encryption using tiny-AES-c
-  // -------------------------------------------------------------------------
-  struct AES_ctx ctx;
-  uint8_t key[16] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
-                     0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf};
-  uint8_t plaintext[16] = "0123456789abcdef";
-
-  // initialize context
-  AES_init_ctx(&ctx, key);
-
-  // encrypt buffer (encryption happens in place)
-  AES_ECB_encrypt(&ctx, plaintext);
-
-  // decrypt buffer (decryption happens in place)
-  AES_ECB_decrypt(&ctx, plaintext);
-  // -------------------------------------------------------------------------
-  // end example
-  // -------------------------------------------------------------------------
-#endif
-
   // Initialize board link UART
-  setup_board_link();
+  setup_uart_links();
 
   // Setup SW1
   GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);
   GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_4MA,
                    GPIO_PIN_TYPE_STD_WPU);
 
-  // Declare a buffer for reading and writing to UART
-  uint8_t uart_buffer[10];
-  uint8_t uart_buffer_index = 0;
 
   uint8_t previous_sw_state = GPIO_PIN_4;
   uint8_t debounce_sw_state = GPIO_PIN_4;
@@ -172,32 +143,10 @@ int main(void)
   // Infinite loop for polling UART
   while (true)
   {
-
     // Non blocking UART polling
     if (uart_avail(HOST_UART))
     {
-      uint8_t uart_char = (uint8_t)uart_readb(HOST_UART);
-
-      if ((uart_char != '\r') && (uart_char != '\n') && (uart_char != '\0') &&
-          (uart_char != 0xD))
-      {
-        uart_buffer[uart_buffer_index] = uart_char;
-        uart_buffer_index++;
-      }
-      else
-      {
-        uart_buffer[uart_buffer_index] = 0x00;
-        uart_buffer_index = 0;
-
-        if (!(strcmp((char *)uart_buffer, "enable")))
-        {
-          enableFeature(&fob_state_ram);
-        }
-        else if (!(strcmp((char *)uart_buffer, "pair")))
-        {
-          pairFob(&fob_state_ram);
-        }
-      }
+      receive_host_uart();
     }
 
     current_sw_state = GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_4);
@@ -225,45 +174,16 @@ int main(void)
  *
  * @param fob_state_ram pointer to the current fob state in ram
  */
-void pairFob(FLASH_DATA *fob_state_ram)
-{
-  MESSAGE_PACKET message;
-  // Start pairing transaction - fob is already paired
-  if (fob_state_ram->paired == FLASH_PAIRED)
-  {
-    int16_t bytes_read;
-    uint8_t uart_buffer[8];
-    uart_write(HOST_UART, (uint8_t *)"Enter pin: ", 11);
-    bytes_read = uart_readline(HOST_UART, uart_buffer);
-
-    if (bytes_read == 6)
-    {
-      // If the pin is correct
-      if (!(strcmp((char *)uart_buffer,
-                   (char *)fob_state_ram->pair_info.pin)))
-      {
-        // Pair the new key by sending a PAIR_PACKET structure
-        // with required information to unlock door
-        message.message_len = sizeof(PAIR_PACKET);
-        message.magic = PAIR_MAGIC;
-        message.buffer = (uint8_t *)&fob_state_ram->pair_info;
-        send_board_message(&message);
-      }
-    }
+int8_t pairFob(uint8_t *pin_hash){
+  // Check if we are paired first. Can't send secret if we aren't paired at all
+  if(get_if_paired == 0){
+    return -1;
   }
-
-  // Start pairing transaction - fob is not paired
-  else
-  {
-    message.buffer = (uint8_t *)&fob_state_ram->pair_info;
-    receive_board_message_by_type(&message, PAIR_MAGIC);
-    fob_state_ram->paired = FLASH_PAIRED;
-    strcpy((char *)fob_state_ram->feature_info.car_id,
-           (char *)fob_state_ram->pair_info.car_id);
-
-    uart_write(HOST_UART, (uint8_t *)"Paired", 6);
-
-    saveFobState(fob_state_ram);
+  if(memcmp(pin_hash, fob_state_ram.pair_info.pin, 8) == 0){
+    // The unpaired fob has sent the right pin, send over secret
+  }
+  else{
+    // Not good, send NACK and end framing
   }
 }
 
@@ -370,4 +290,8 @@ uint8_t receiveAck()
   receive_board_message_by_type(&message, ACK_MAGIC);
 
   return message.buffer[0];
+}
+
+uint8_t get_if_paired(void){
+  return fob_state_ram.paired;
 }

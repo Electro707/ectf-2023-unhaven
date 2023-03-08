@@ -1,0 +1,9 @@
+.vscode
+# Temporary secret files when using make
+tmp_secrets/
+# Build files
+*/gcc/
+*/bin/
+# Custom build command as easier than docker
+*/build_manual.sh
+*/inc/secrets.h

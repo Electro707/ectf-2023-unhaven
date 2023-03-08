@@ -19,32 +19,14 @@
 
 #include "inc/hw_memmap.h"
 
-#define ACK_SUCCESS 1
-#define ACK_FAIL 0
-
-#define ACK_MAGIC 0x54
-#define PAIR_MAGIC 0x55
-#define UNLOCK_MAGIC 0x56
-#define START_MAGIC 0x57
-#define BOARD_UART ((uint32_t)UART1_BASE)
-
-/**
- * @brief Structure for message between boards
- *
- */
-typedef struct
-{
-  uint8_t magic;
-  uint8_t message_len;
-  uint8_t *buffer;
-} MESSAGE_PACKET;
-
 /**
  * @brief Set the up board link object
  *
  * UART 1 is used to communicate between boards
  */
-void setup_board_link(void);
+void setup_uart_links(void);
+
+void receive_host_uart(void);
 
 /**
  * @brief Send a message between boards
