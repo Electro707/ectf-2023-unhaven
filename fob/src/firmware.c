@@ -224,12 +224,19 @@ void process_board_uart(void){
 
   switch(host->buffer[0]){
     case COMMAND_BYTE_RETURN_OWN_ECDH:
-      // This can happend either because we are a unpaired fob and just established comms with paired fob,
+      // This can happen either because we are a unpaired fob and just established comms with paired fob,
       // Or we are a paired fob trying to communicate with a car
-
+      // TODO: Add general check around message_state
+      if(host->buffer_index != 1+AES_KEY_SIZE_BYTES){
+        returnNack(host);
+        // TODO: Also NACK computer
+        break;
+      }
+      setup_secure_aes(host, &host->buffer[1]);
       // TODO: Initialize the internal AES context with generated key
       if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
         // We send out our hashed pairing key in order to get the secret
+        // TODO: Add check
         generate_send_message(host, COMMAND_BYTE_GET_SECRET, unpaired_received_pin, 16);
       }
       // else if(){

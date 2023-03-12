@@ -144,8 +144,7 @@ void process_received_packet(DATA_TRANSFER_T *host){
       if(host->buffer_index != 1+AES_KEY_SIZE_BYTES){
         generate_ecdh_local_keys(host);
         // NOTE: This can be a vulnerability if buffer size is not right
-        uECC_shared_secret(&host->buffer[1], host->ecc_secret, host->aes_key, curve);
-        AES_init_ctx(&host->aes_ctx, host->aes_key);
+        setup_secure_aes(host, &host->buffer[1]);
         // TODO: Might have to re-do the aes key structure
         generate_send_message(host, COMMAND_BYTE_RETURN_OWN_ECDH, host->ecc_public, AES_KEY_SIZE_BYTES);
         host->exchanged_ecdh = true;
@@ -198,24 +197,42 @@ void create_new_secure_comms(DATA_TRANSFER_T *host){
   generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, host->ecc_public, AES_KEY_SIZE_BYTES);
 }
 
+void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public){
+  uECC_shared_secret(other_public, host->ecc_secret, host->aes_key, curve);
+  AES_init_ctx(&host->aes_ctx, host->aes_key);
+}
+
 /**
  * A common message generator to the host and car/fob
  */
-void generate_send_message(DATA_TRANSFER_T *hosts, COMMAND_BYTE_e command, uint8_t *data, uint8_t len){
-  static uint8_t to_send_msg[30];
+void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_t *data, uint8_t len){
+  static uint8_t to_send_msg[AES_KEY_SIZE_BYTES*2];
+  memset(to_send_msg, 0, AES_KEY_SIZE_BYTES*2);
   uint8_t msg_len = 1;
   to_send_msg[1] = command;
   if(len != 0){
     memcpy(&to_send_msg[2], data, len);
   }
 
+  #ifndef RUN_UNENCRYPTED
+  // Don't encrypt any COMMAND_BYTE_NEW_MESSAGE_ECDH or COMMAND_BYTE_RETURN_OWN_ECDH commands
+  if(!(command == COMMAND_BYTE_NEW_MESSAGE_ECDH || command == COMMAND_BYTE_RETURN_OWN_ECDH)){
+    if(msg_len % AES_KEY_SIZE_BYTES != 0){
+      msg_len += AES_KEY_SIZE_BYTES-(msg_len % AES_KEY_SIZE_BYTES);
+    }
+    AES_ECB_encrypt(&host->aes_ctx, to_send_msg, msg_len);
+  }
+  #endif
+
   // CRC for overall message
-  msg_len += 2;
+  uint16_t crc = calculate_crc(&to_send_msg[1], msg_len);
+  to_send_msg[msg_len++] = (crc >> 8) & 0xFF;
+  to_send_msg[msg_len++] = crc & 0xFF;
   // Length of overall message
   to_send_msg[0] = msg_len;
-  msg_len += 1;
+  msg_len += 1;   // This is only for the next function
 
-  uart_write(hosts->uart_base, to_send_msg, msg_len);
+  uart_write(host->uart_base, to_send_msg, msg_len);
 }
 
 uint32_t get_random_seed(){
