@@ -127,20 +127,17 @@ int main(void)
   while (true)
   {
     // Non blocking UART polling
-    if (uart_avail(HOST_UART))
-    {
+    if (uart_avail(HOST_UART)){
       receive_host_uart();
     }
 
     // Non blocking UART polling
-    if (uart_avail(BOARD_UART))
-    {
+    if (uart_avail(BOARD_UART)){
       receive_board_uart();
     }
 
     current_sw_state = GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_4);
-    if ((current_sw_state != previous_sw_state) && (current_sw_state == 0))
-    {
+    if ((current_sw_state != previous_sw_state) && (current_sw_state == 0)){
       // Debounce switch
       for (int i = 0; i < 10000; i++)
         ;
@@ -294,6 +291,13 @@ void process_board_uart(void){
       saveFobState(&fob_state_ram);
       returnAck(&host_comms);
       host->exchanged_ecdh = false;
+      break;
+    case COMMAND_BYTE_NACK:
+      // I mean there isn't much to do here, other than reset
+      host->exchanged_ecdh = false;
+      break;
+    default:
+      // TODO: Do something, probably
       break;
   }
 }
