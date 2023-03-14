@@ -62,6 +62,8 @@ void saveFobState(FLASH_DATA *flash_data);
 int8_t process_received_new_feature(uint8_t *data);
 inline uint8_t get_if_paired(void);
 
+static void sendCarUnlockToken(void);
+
 uint8_t unpaired_received_pin[16];
 
 static const uint8_t feature_unlock_key[16] = FEATURE_UNLOCK_KEY;
@@ -145,6 +147,7 @@ int main(void)
       debounce_sw_state = GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_4);
       if (debounce_sw_state == current_sw_state)
       {
+        startUnlockCar();
         // unlockCar(&fob_state_ram);
         // if (receiveAck())
         // {
@@ -228,8 +231,10 @@ void process_board_uart(void){
       // Or we are a paired fob trying to communicate with a car
       // TODO: Add general check around message_state
       if(host->buffer_index != 1+AES_KEY_SIZE_BYTES){
+        if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
+          returnNack(&host_comms);
+        }
         returnNack(host);
-        // TODO: Also NACK computer
         break;
       }
       setup_secure_aes(host, &host->buffer[1]);
@@ -239,9 +244,9 @@ void process_board_uart(void){
         // TODO: Add check
         generate_send_message(host, COMMAND_BYTE_GET_SECRET, unpaired_received_pin, 16);
       }
-      // else if(){
-
-      // }
+      else if(message_state == COMMAND_STATE_WAITING_FOR_CAR_ECDH){
+        sendCarUnlockToken();
+      }
       else{
         returnNack(host);
         break;
@@ -311,6 +316,32 @@ int8_t process_received_new_feature(uint8_t *data){
 }
 
 /**
+ * Function that gets called when a button is pressed, to mainly unlock the car
+*/
+void startUnlockCar(void){
+  if(get_if_paired() != 1){
+    return;
+  }
+  if(message_state != COMMAND_STATE_RESET){
+    return;
+  }
+  // Start ECDH with car
+  create_new_secure_comms(&board_comms);
+  message_state = COMMAND_STATE_WAITING_FOR_CAR_ECDH;
+}
+
+/**
+ * This gets called when the car returns the ECDH exchange
+*/
+static void sendCarUnlockToken(void){
+  // Let's pack the car secret and feature bits
+  uint8_t to_send[16+1];
+  memcpy(to_send, fob_state_ram.car_secret, 16);
+  to_send[16] = fob_state_ram.feature_bitfield;
+  generate_send_message(&board_comms, COMMAND_BYTE_TO_CAR_UNLOCK, to_send, 17);
+}
+
+/**
  * @brief Function that erases and rewrites the non-volatile data to flash
  *
  * @param info Pointer to the flash data ram
@@ -322,5 +353,5 @@ void saveFobState(FLASH_DATA *flash_data)
 }
 
 inline uint8_t get_if_paired(void){
-  return fob_state_ram.paired == 1;
+  return fob_state_ram.paired == PAIRED_STATE_PAIRED;
 }
