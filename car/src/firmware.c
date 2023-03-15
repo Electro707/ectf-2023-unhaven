@@ -25,11 +25,11 @@
 #include "driverlib/pin_map.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/timer.h"
+#include "driverlib/systick.h"
 
 #include "secrets.h"
 
 #include "comms.h"
-#include "feature_list.h"
 #include "uart.h"
 
 /*** Macro Definitions ***/
@@ -43,7 +43,7 @@
 
 /*** Function definitions ***/
 // Core functions - unlockCar and startCar
-int8_t unlockCar(char *msg);
+int8_t unlockCar(unsigned char *msg);
 
 // Declare password
 const uint8_t car_id[16] = CAR_ID;
@@ -55,6 +55,9 @@ const uint8_t car_id[16] = CAR_ID;
  * If successful prints out the unlock flag.
  */
 int main(void) {
+  SysTickPeriodSet(16777216);
+  SysTickEnable();
+
   // Ensure EEPROM peripheral is enabled
   SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);
   EEPROMInit();
@@ -80,7 +83,7 @@ void process_board_uart(void){
         returnNack(host);
         break;
       }
-      stat = unlockCar(&host->buffer[1])
+      stat = unlockCar(&host->buffer[1]);
       if(stat != 0){
         returnHostNack();
       }
@@ -96,7 +99,7 @@ void process_board_uart(void){
 /**
  * This function gets called when we want to unlock car
  */
-int8_t unlockCar(char *msg){
+int8_t unlockCar(unsigned char *msg){
   // Check if Car ID matches
   if(memcmp(msg, car_id, 16) != 0){
     return -1;
@@ -118,4 +121,6 @@ int8_t unlockCar(char *msg){
       uart_write(HOST_UART, eeprom_message, FEATURE_SIZE);
     }
   }
+
+  return 0;
 }

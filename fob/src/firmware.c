@@ -24,6 +24,7 @@
 #include "driverlib/pin_map.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/timer.h"
+#include "driverlib/systick.h"
 
 #include "secrets.h"
 
@@ -62,6 +63,7 @@ void saveFobState(FLASH_DATA *flash_data);
 int8_t process_received_new_feature(uint8_t *data);
 inline uint8_t get_if_paired(void);
 
+void startUnlockCar(void);
 static void sendCarUnlockToken(void);
 
 uint8_t unpaired_received_pin[16];
@@ -83,14 +85,15 @@ int main(void)
 {
   FLASH_DATA *fob_state_flash = (FLASH_DATA *)FOB_STATE_PTR;
 
-  //TODO: Start the system timer
+  SysTickPeriodSet(16777216);
+  SysTickEnable();
 
 // If paired fob, initialize the system information
 #if PAIRED == 1
   if (fob_state_flash->paired == PAIRED_STATE_UNPAIRED)
   {
-    memcpy(fob_state_ram.pair_info.hashed_pin, PAIRING_PIN, 16);
-    memcpy(fob_state_ram.pair_info.car_secret, CAR_SECRET, 16);
+    memcpy(fob_state_ram.hashed_pin, PAIR_PIN, 16);
+    memcpy(fob_state_ram.car_secret, CAR_SECRET, 16);
     fob_state_ram.paired = PAIRED_STATE_PAIRED;
     saveFobState(&fob_state_ram);
   }

@@ -14,6 +14,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
@@ -23,6 +24,7 @@
 #include "driverlib/pin_map.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/uart.h"
+#include "driverlib/systick.h"
 
 #include "comms.h"
 #include "uart.h"
@@ -44,7 +46,7 @@ DATA_TRANSFER_T board_comms;
 // Curve for ECDH
 const struct uECC_Curve_t * curve;
 
-inline void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
+void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
 void process_received_packet(DATA_TRANSFER_T *host);
 void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host);
 
@@ -64,7 +66,7 @@ void setup_uart_links(void) {
  * 
  * NOTE: Eventually switch this to interrupt
  */
-void receive_board_uart(uint32_t uart_base, DATA_TRANSFER_T *host){
+void receive_board_uart(void){
   DATA_TRANSFER_T *host = &board_comms;
   uint8_t uart_char = (uint8_t)uart_readb(BOARD_UART);
 
@@ -143,7 +145,7 @@ void process_received_packet(DATA_TRANSFER_T *host){
 
 }
 
-inline void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts){
+void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts){
   uECC_make_key(hosts->ecc_public, hosts->ecc_secret, curve);
 }
 
@@ -153,7 +155,6 @@ inline void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts){
 void returnNack(DATA_TRANSFER_T *host){
   generate_send_message(host, COMMAND_BYTE_NACK, NULL, 0);
   host->exchanged_ecdh = false;
-  message_state = COMMAND_STATE_RESET;
 }
 
 void returnAck(DATA_TRANSFER_T *host){
@@ -209,5 +210,5 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
 }
 
 uint32_t get_random_seed(){
-  return 0;
+  return SysTickValueGet();
 }

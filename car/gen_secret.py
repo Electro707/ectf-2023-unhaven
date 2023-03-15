@@ -15,7 +15,7 @@
 import json
 import argparse
 from pathlib import Path
-
+import random
 
 def main():
     parser = argparse.ArgumentParser()
@@ -31,9 +31,15 @@ def main():
     else:
         secrets = {}
 
-    # Add dummy secret
-    car_secret = args.car_id + 1
-    secrets[str(args.car_id)] = car_secret
+    car_secret = random.randint(0, 2**(16*8))
+
+    car_secret = car_secret.to_bytes(16, 'big')
+    car_secret_str = "["
+    for c in car_secret:
+        car_secret_str += f"{c:d},"
+    car_secret_str = car_secret_str[:-1] + "]"
+    
+    secrets[str(args.car_id)+"_secret_str"] = car_secret_str
 
     # Save the secret file
     with open(args.secret_file, "w") as fp:
@@ -43,9 +49,8 @@ def main():
     with open(args.header_file, "w") as fp:
         fp.write("#ifndef __CAR_SECRETS__\n")
         fp.write("#define __CAR_SECRETS__\n\n")
-        fp.write(f"#define CAR_SECRET {car_secret}\n\n")
+        fp.write(f"#define CAR_SECRET {car_secret_str}\n\n")
         fp.write(f'#define CAR_ID "{args.car_id}"\n\n')
-        fp.write('#define PASSWORD "unlock"\n\n')
         fp.write("#endif\n")
 
 

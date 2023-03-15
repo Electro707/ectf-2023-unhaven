@@ -21,6 +21,7 @@
 #include "driverlib/pin_map.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/uart.h"
+#include "driverlib/systick.h"
 
 #include "comms.h"
 
@@ -44,7 +45,7 @@ DATA_TRANSFER_T board_comms;
 // Curve for ECDH
 const struct uECC_Curve_t * curve;
 
-inline void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
+void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
 void process_received_packet(DATA_TRANSFER_T *host);
 void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host);
 
@@ -175,7 +176,7 @@ void process_received_packet(DATA_TRANSFER_T *host){
 
 }
 
-inline void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts){
+void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts){
   uECC_make_key(hosts->ecc_public, hosts->ecc_secret, curve);
 }
 
@@ -236,5 +237,5 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
 }
 
 uint32_t get_random_seed(){
-  return 0;
+  return SysTickValueGet();
 }

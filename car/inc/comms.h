@@ -78,7 +78,6 @@ extern DATA_TRANSFER_T board_comms;
  */
 void setup_uart_links(void);
 
-void receive_host_uart(void);
 void receive_board_uart(void);
 
 void returnNack(DATA_TRANSFER_T *host);
