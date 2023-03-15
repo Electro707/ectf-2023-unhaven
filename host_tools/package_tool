@@ -13,7 +13,11 @@
 # @copyright Copyright (c) 2023 The MITRE Corporation
 
 import argparse
+import json
+from Crypto.Cipher import AES
 
+SECRETS_JSON_PATH = "/secrets/secrets.json"
+PACKED_EXPORT_PATH = "."
 
 # @brief Function to create a new feature package
 # @param package_name, name of the file to output package data to
