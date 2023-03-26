@@ -52,7 +52,7 @@ def main():
             fp.write(f'#define CAR_ID "{args.car_id}"\n')
             fp.write(f'#define FEATURE_UNLOCK_KEY "{feature_unlock}"\n')
             # NOTE: This car secret is already in a nice string format
-            fp.write(f'#define CAR_SECRET "{car_secret}"\n\n')
+            fp.write(f'#define CAR_SECRET {car_secret}\n\n')
             fp.write("#endif\n")
     else:
         # Write to header file

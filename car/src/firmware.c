@@ -46,7 +46,7 @@
 int8_t unlockCar(unsigned char *msg);
 
 // Declare password
-const uint8_t car_id[16] = CAR_ID;
+const uint8_t CAR_SECRET;
 
 /**
  * @brief Main function for the car example
@@ -79,7 +79,7 @@ void process_board_uart(void){
   switch(host->buffer[0]){
     // This is car. Other than ECDH, this is the only command that can be used
     case COMMAND_BYTE_TO_CAR_UNLOCK:
-      if(host->buffer_index != 1+16){
+      if(host->buffer_index != 1+16+1){
         returnNack(host);
         break;
       }
@@ -101,7 +101,7 @@ void process_board_uart(void){
  */
 int8_t unlockCar(unsigned char *msg){
   // Check if Car ID matches
-  if(memcmp(msg, car_id, 16) != 0){
+  if(memcmp(msg, car_secret, 16) != 0){
     return -1;
   }
   uint8_t feature_bits = msg[16];

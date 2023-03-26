@@ -4,6 +4,7 @@ tmp_secrets/
 # Build files
 */gcc/
 */bin/
+build/
 # Custom build command as easier than docker
 */build_manual.sh
 */inc/secrets.h

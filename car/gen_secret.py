@@ -34,10 +34,10 @@ def main():
     car_secret = random.randint(0, 2**(16*8))
 
     car_secret = car_secret.to_bytes(16, 'big')
-    car_secret_str = "["
+    car_secret_str = "car_secret[16] = {"
     for c in car_secret:
         car_secret_str += f"{c:d},"
-    car_secret_str = car_secret_str[:-1] + "]"
+    car_secret_str = car_secret_str[:-1] + "}"
     
     secrets[str(args.car_id)+"_secret_str"] = car_secret_str
 

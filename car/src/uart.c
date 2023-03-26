@@ -74,6 +74,8 @@ void uart_init_board(void){
 
   GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
 
+  GPIOPadConfigSet(GPIO_PORTB_BASE, GPIO_PIN_1 | GPIO_PIN_0, GPIO_STRENGTH_8MA, GPIO_PIN_TYPE_STD_WPU);
+
   // Configure the UART for 115,200, 8-N-1 operation.
   UARTConfigSetExpClk(
       BOARD_UART, SysCtlClockGet(), 115200,

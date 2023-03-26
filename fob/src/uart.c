@@ -65,14 +65,19 @@ void uart_init_host(void) {
   }
 }
 
+/**
+* UART 1 is connected to PB0 and PB1
+*/
 void uart_init_board(void){
   SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
   SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 
+  GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
   GPIOPinConfigure(GPIO_PB0_U1RX);
   GPIOPinConfigure(GPIO_PB1_U1TX);
 
-  GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+  GPIOPadConfigSet(GPIO_PORTB_BASE, GPIO_PIN_1 | GPIO_PIN_0, GPIO_STRENGTH_8MA, GPIO_PIN_TYPE_STD_WPU);
 
   // Configure the UART for 115,200, 8-N-1 operation.
   UARTConfigSetExpClk(
@@ -83,6 +88,26 @@ void uart_init_board(void){
   while (UARTCharsAvail(BOARD_UART)) {
     UARTCharGet(BOARD_UART);
   }
+}
+
+/**
+ * Debug UART (used for debugging, duh!)
+ *
+ * Connected to PD6 and PD7
+*/
+void uart_init_debug(void){
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_UART4);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
+
+  GPIOPinTypeUART(GPIO_PORTC_BASE, GPIO_PIN_4 | GPIO_PIN_5);
+
+  GPIOPinConfigure(GPIO_PC4_U4RX);
+  GPIOPinConfigure(GPIO_PC5_U4TX);
+
+  // Configure the UART for 115,200, 8-N-1 operation.
+  UARTConfigSetExpClk(
+      DEBUG_UART, SysCtlClockGet(), 115200,
+      (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
 }
 
 /**

@@ -12,6 +12,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
@@ -49,6 +50,8 @@ void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
 void process_received_packet(DATA_TRANSFER_T *host);
 void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host);
 
+int get_random_bytes(uint8_t *buff, uint16_t len);
+
 /**
  * @brief Set the up board link and car link UART
  *
@@ -62,16 +65,19 @@ void setup_uart_links(void) {
   curve = uECC_secp192r1();
 
   host_comms.uart_base = HOST_UART;
-  board_comms.uart_base = UART1_BASE;
+  board_comms.uart_base = BOARD_UART;
   // TODO: Have better reset mechanism
   host_comms.exchanged_ecdh = false;
   board_comms.exchanged_ecdh = false;
   
   // TODO: Temporary key
-  memset(host_comms.aes_key, 'A', 24);
+  // memset(host_comms.aes_key, 'A', 24);
 
   // NOTE: Not needed as the context gets generated per transaction
   // AES_init_ctx(&host_comms.aes_ctx, host_comms.aes_key);
+
+  uECC_set_rng(get_random_bytes);
+
 }
 
 void receive_host_uart(void){
@@ -97,9 +103,10 @@ void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host){
       if(host->packet_size == 0){
         return;
       }
-      if((host->packet_size  % 16) != 0){
-        return;
-      }
+      // if((host->packet_size % AES_BLOCKLEN) != 0){
+      //   return;
+      // }
+      host->crc = 0;
       host->buffer_index = 0;
       host->state = RECEIVE_PACKET_STATE_DATA;
       break;
@@ -127,7 +134,7 @@ void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host){
  * underlaying communication protocol is the same.
 */
 void process_received_packet(DATA_TRANSFER_T *host){
-  if(host->buffer_index <= 3){  // Smallest message must include at least ony byte and CRC
+  if(host->buffer_index < 3){  // Smallest message must include at least ony byte and CRC
     // TODO: Raise error: too short
     return;
   }
@@ -137,13 +144,17 @@ void process_received_packet(DATA_TRANSFER_T *host){
     // TODO: Raise error
     return;
   }
+
+  uart_debug_number(host->buffer[0]);
+  uart_debug_strln(" <- Received instruction");
   
   if(host->exchanged_ecdh == false){
     // TODO: If this is a board commands, do a sanity check whether it is right to start
     // receiving a command
     if(host->buffer[0] == COMMAND_BYTE_NEW_MESSAGE_ECDH){
-      if(host->buffer_index != 1+AES_KEY_SIZE_BYTES){
+      if(host->buffer_index != 1+AES_KEY_SIZE_BYTES+AES_IV_SIZE_BYTES){
         generate_ecdh_local_keys(host);
+        memcpy(host->buffer+1+AES_KEY_SIZE_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
         // NOTE: This can be a vulnerability if buffer size is not right
         setup_secure_aes(host, &host->buffer[1]);
         // TODO: Might have to re-do the aes key structure
@@ -194,25 +205,33 @@ void returnAck(DATA_TRANSFER_T *host){
 }
 
 void create_new_secure_comms(DATA_TRANSFER_T *host){
+  uint8_t to_send[AES_KEY_SIZE_BYTES+AES_IV_SIZE_BYTES];
   generate_ecdh_local_keys(host);
-  generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, host->ecc_public, AES_KEY_SIZE_BYTES);
+  // Generate some AES IV
+  get_random_bytes(host->aes_iv, AES_IV_SIZE_BYTES);
+  // Copy the right packet into `to_send`
+  memcpy(to_send, host->ecc_public, AES_KEY_SIZE_BYTES);
+  memcpy(to_send+AES_KEY_SIZE_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
+  // Send it
+  generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, to_send, AES_KEY_SIZE_BYTES+AES_IV_SIZE_BYTES);
 }
 
 void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public){
   uECC_shared_secret(other_public, host->ecc_secret, host->aes_key, curve);
-  AES_init_ctx(&host->aes_ctx, host->aes_key);
+  AES_init_ctx_iv(&host->aes_ctx, host->aes_key, host->aes_iv);
 }
 
 /**
  * A common message generator to the host and car/fob
  */
 void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_t *data, uint8_t len){
-  static uint8_t to_send_msg[AES_KEY_SIZE_BYTES*2];
-  memset(to_send_msg, 0, AES_KEY_SIZE_BYTES*2);
+  uint8_t to_send_msg[AES_BLOCKLEN*3];
+  memset(to_send_msg, 0, AES_BLOCKLEN*3);
   uint8_t msg_len = 1;
   to_send_msg[1] = command;
   if(len != 0){
     memcpy(&to_send_msg[2], data, len);
+    msg_len += len;
   }
 
   #ifndef RUN_UNENCRYPTED
@@ -227,15 +246,49 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
 
   // CRC for overall message
   uint16_t crc = calculate_crc(&to_send_msg[1], msg_len);
-  to_send_msg[msg_len++] = (crc >> 8) & 0xFF;
-  to_send_msg[msg_len++] = crc & 0xFF;
+  to_send_msg[1+msg_len++] = (crc >> 8) & 0xFF;
+  to_send_msg[1+msg_len++] = crc & 0xFF;
   // Length of overall message
   to_send_msg[0] = msg_len;
   msg_len += 1;   // This is only for the next function
-
+  
   uart_write(host->uart_base, to_send_msg, msg_len);
+}
+
+void uart_debug_strln(const char *str){
+  uart_write(DEBUG_UART, (uint8_t *)str, strlen(str));
+  uart_debug_newline();
+}
+
+void uart_debug_number(uint32_t numb){
+  char reversed_str[10];
+  char *reversed_str_index = reversed_str;
+
+  const volatile char *digits = "0123456789ABCDEF";
+
+  do
+  {
+    *reversed_str_index++ = digits[numb % 10];
+  } while ((numb /= 10) != 0);
+  
+  // Reverse string
+  for(reversed_str_index--;reversed_str_index >=reversed_str;reversed_str_index--){
+    uart_writeb(DEBUG_UART, *reversed_str_index);
+  }
+}
+
+void uart_debug_newline(void){
+  uart_writeb(DEBUG_UART, '\n');
 }
 
 uint32_t get_random_seed(){
   return SysTickValueGet();
+}
+
+// Temporary function for getting random bytes
+int get_random_bytes(uint8_t *buff, uint16_t len){
+  do{
+    *buff++ = (uint8_t)(SysTickValueGet() & 0xFF);
+  }while(--len > 0);
+  return 1;
 }

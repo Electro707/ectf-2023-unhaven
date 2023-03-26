@@ -49,12 +49,15 @@ const struct uECC_Curve_t * curve;
 void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
 void process_received_packet(DATA_TRANSFER_T *host);
 void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host);
+int get_random_bytes(uint8_t *buff, uint16_t len);
 
 void setup_uart_links(void) {
   uart_init_host();
   uart_init_board();
 
   curve = uECC_secp192r1();
+
+  uECC_set_rng(get_random_bytes);
 
   board_comms.uart_base = UART1_BASE;
   // TODO: Have better reset mechanism
@@ -76,9 +79,10 @@ void receive_board_uart(void){
       if(host->packet_size == 0){
         return;
       }
-      if((host->packet_size  % 16) != 0){
-        return;
-      }
+      // if((host->packet_size % AES_BLOCKLEN) != 0){
+      //   return;
+      // }
+      host->crc = 0;
       host->buffer_index = 0;
       host->state = RECEIVE_PACKET_STATE_DATA;
       break;
@@ -106,7 +110,7 @@ void receive_board_uart(void){
  * underlaying communication protocol is the same.
 */
 void process_received_packet(DATA_TRANSFER_T *host){
-  if(host->buffer_index <= 3){  // Smallest message must include at least ony byte and CRC
+  if(host->buffer_index < 3){  // Smallest message must include at least ony byte and CRC
     // TODO: Raise error: too short
     return;
   }
@@ -120,8 +124,9 @@ void process_received_packet(DATA_TRANSFER_T *host){
   if(host->exchanged_ecdh == false){
     // TODO: We are a car. We are to receive command
     if(host->buffer[0] == COMMAND_BYTE_NEW_MESSAGE_ECDH){
-      if(host->buffer_index != 1+AES_KEY_SIZE_BYTES){
+      if(host->buffer_index == (1+AES_KEY_SIZE_BYTES+AES_IV_SIZE_BYTES)){
         generate_ecdh_local_keys(host);
+        memcpy(host->buffer+1+AES_KEY_SIZE_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
         // NOTE: This can be a vulnerability if buffer size is not right
         setup_secure_aes(host, &host->buffer[1]);
         // TODO: Might have to re-do the aes key structure
@@ -180,12 +185,13 @@ void returnHostNack(void){
  * A common message generator to the host and car/fob
  */
 void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_t *data, uint8_t len){
-  static uint8_t to_send_msg[AES_KEY_SIZE_BYTES*2];
-  memset(to_send_msg, 0, AES_KEY_SIZE_BYTES*2);
+  static uint8_t to_send_msg[AES_BLOCKLEN*3];
+  memset(to_send_msg, 0, AES_BLOCKLEN*3);
   uint8_t msg_len = 1;
   to_send_msg[1] = command;
   if(len != 0){
     memcpy(&to_send_msg[2], data, len);
+    msg_len += len;
   }
 
   #ifndef RUN_UNENCRYPTED
@@ -200,8 +206,8 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
 
   // CRC for overall message
   uint16_t crc = calculate_crc(&to_send_msg[1], msg_len);
-  to_send_msg[msg_len++] = (crc >> 8) & 0xFF;
-  to_send_msg[msg_len++] = crc & 0xFF;
+  to_send_msg[1+msg_len++] = (crc >> 8) & 0xFF;
+  to_send_msg[1+msg_len++] = crc & 0xFF;
   // Length of overall message
   to_send_msg[0] = msg_len;
   msg_len += 1;   // This is only for the next function
@@ -211,4 +217,12 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
 
 uint32_t get_random_seed(){
   return SysTickValueGet();
+}
+
+// Temporary function for getting random bytes
+int get_random_bytes(uint8_t *buff, uint16_t len){
+  do{
+    *buff++ = (uint8_t)(SysTickValueGet() & 0xFF);
+  }while(--len > 0);
+  return 1;
 }

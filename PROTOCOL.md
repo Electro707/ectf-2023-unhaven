@@ -26,6 +26,14 @@ Shown is only the data porting of a frame
 | Return Secret from Paired         | `0x52` > Car Secret Key (16 bytes)                            |                                                                           |
 | ACK                               | `0x41`                                                        |                                                                           |
 | NACK                              | `0xAA`                                                        |                                                                           |
+| Enable Feature                    | `0x45` > Encrypted Feature data (32 bytes)                    |                                                                           |
+
+## Feature Data
+The un-encrypted feature data is defined as follows:
+
+Car ID (6 bytes) > Hashed Pin (16 bytes) > Feature Number (1 byte, 0 to 3)
+
+This data is padded to 32 bytes, then is encrypted with a Feature Encryption Key that is unique and stored per-fob
 
 ## Transactions
 The following section describes the different possible transactions
@@ -36,8 +44,13 @@ Here are the naming abreviation:
 - H -> Host
 
 ### Pair Fob Process
-#### Wiring
-The host will be wired to both the paired and unpaired fob. The unpaired and paired fob will also be connected togther.
+|---|     |---|
+|   |<--->| P |
+|   |     |---|
+| H |
+|   |     |---|
+|   |<--->| U |
+|---|     |---|
 
 #### Packet Sequence
 1.  H -> P => `Establish Channel`
@@ -52,3 +65,14 @@ The host will be wired to both the paired and unpaired fob. The unpaired and pai
 10. U -> P => `Get Secret from Paired`
 11. P -> U => `Return Secret from Paired`
 12. U -> H => `ACK`
+
+## Enable Feature
+|---|     |---|
+| H |<--->| P |
+|---|     |---|
+
+#### Packet Sequence
+1.  H -> P => `Establish Channel`
+2.  P -> H => `Establish Channel Return`
+3.  H -> P => `Enable Feature`
+4.  P -> H => `ACK`

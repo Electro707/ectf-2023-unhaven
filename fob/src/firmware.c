@@ -56,12 +56,14 @@ typedef struct
 
 COMMAND_STATE_e message_state = COMMAND_STATE_RESET;
 
+const uint8_t CAR_SECRET;
+
 /*** Function definitions ***/
 // Core functions - all functionality supported by fob
 void saveFobState(FLASH_DATA *flash_data);
 
 int8_t process_received_new_feature(uint8_t *data);
-inline uint8_t get_if_paired(void);
+uint8_t get_if_paired(void);
 
 void startUnlockCar(void);
 static void sendCarUnlockToken(void);
@@ -93,7 +95,7 @@ int main(void)
   if (fob_state_flash->paired == PAIRED_STATE_UNPAIRED)
   {
     memcpy(fob_state_ram.hashed_pin, PAIR_PIN, 16);
-    memcpy(fob_state_ram.car_secret, CAR_SECRET, 16);
+    memcpy(fob_state_ram.car_secret, car_secret, 16);
     fob_state_ram.paired = PAIRED_STATE_PAIRED;
     saveFobState(&fob_state_ram);
   }
@@ -111,16 +113,19 @@ int main(void)
   }
 
   // Initialize AES context for feature unlock
-  AES_init_ctx(&feature_unlock_aes, feature_unlock_key);
+  //AES_init_ctx(&feature_unlock_aes, feature_unlock_key);
 
   // Initialize board link UART
   setup_uart_links();
+
+  uart_init_debug();
 
   // Setup SW1
   GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);
   GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_4MA,
                    GPIO_PIN_TYPE_STD_WPU);
-
+  
+  uart_debug_strln("Started Program!22\0");
 
   uint8_t previous_sw_state = GPIO_PIN_4;
   uint8_t debounce_sw_state = GPIO_PIN_4;
@@ -246,6 +251,9 @@ void process_board_uart(void){
       }
       else if(message_state == COMMAND_STATE_WAITING_FOR_CAR_ECDH){
         sendCarUnlockToken();
+        // For now the fob does nothing about any return statement, so do nothing...
+        host->exchanged_ecdh = false;
+        message_state = COMMAND_STATE_RESET;
       }
       else{
         returnNack(host);
@@ -275,16 +283,17 @@ void process_board_uart(void){
     case COMMAND_BYTE_RETURN_SECRET:
       // If we are the unpaired fob and we just got our secret, yay
       message_state = COMMAND_STATE_RESET;
+        host->exchanged_ecdh = false;
       if(get_if_paired() != 0){
         // We send a NACK back to the host
         returnNack(&host_comms);
-        host->exchanged_ecdh = false;
+        // host->exchanged_ecdh = false;
         break;
       }
       // Sanity check for the buffer size
       if(host->buffer_index != 1+16){
         returnNack(&host_comms);
-        host->exchanged_ecdh = false;
+        // host->exchanged_ecdh = false;
         break;
       }
       // TODO: Store this in FLASH
@@ -293,11 +302,12 @@ void process_board_uart(void){
       fob_state_ram.paired = true;
       saveFobState(&fob_state_ram);
       returnAck(&host_comms);
-      host->exchanged_ecdh = false;
+      // host->exchanged_ecdh = false;
       break;
     case COMMAND_BYTE_NACK:
       // I mean there isn't much to do here, other than reset
       host->exchanged_ecdh = false;
+      message_state = COMMAND_STATE_RESET;
       break;
     default:
       // TODO: Do something, probably
@@ -327,12 +337,15 @@ int8_t process_received_new_feature(uint8_t *data){
 */
 void startUnlockCar(void){
   if(get_if_paired() != 1){
+    uart_debug_strln("Not Paired");
     return;
   }
   if(message_state != COMMAND_STATE_RESET){
+    uart_debug_strln("Not in comm reset");
     return;
   }
   // Start ECDH with car
+  uart_debug_strln("Unlocking Car!!");
   create_new_secure_comms(&board_comms);
   message_state = COMMAND_STATE_WAITING_FOR_CAR_ECDH;
 }
@@ -359,6 +372,6 @@ void saveFobState(FLASH_DATA *flash_data)
   FlashProgram((uint32_t *)flash_data, FOB_STATE_PTR, FLASH_DATA_SIZE);
 }
 
-inline uint8_t get_if_paired(void){
+uint8_t get_if_paired(void){
   return fob_state_ram.paired == PAIRED_STATE_PAIRED;
 }
