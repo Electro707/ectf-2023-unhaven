@@ -125,7 +125,7 @@ int main(void)
   GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_4MA,
                    GPIO_PIN_TYPE_STD_WPU);
   
-  uart_debug_strln("Started Program!22\0");
+  uart_debug_strln("Started Program!3\0");
 
   uint8_t previous_sw_state = GPIO_PIN_4;
   uint8_t debounce_sw_state = GPIO_PIN_4;
@@ -235,7 +235,7 @@ void process_board_uart(void){
       // This can happen either because we are a unpaired fob and just established comms with paired fob,
       // Or we are a paired fob trying to communicate with a car
       // TODO: Add general check around message_state
-      if(host->buffer_index != 1+AES_KEY_SIZE_BYTES){
+      if(host->buffer_index != 1+48){
         if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
           returnNack(&host_comms);
         }

@@ -79,10 +79,10 @@ void process_board_uart(void){
   switch(host->buffer[0]){
     // This is car. Other than ECDH, this is the only command that can be used
     case COMMAND_BYTE_TO_CAR_UNLOCK:
-      if(host->buffer_index != 1+16+1){
-        returnNack(host);
-        break;
-      }
+      // if(host->buffer_index != 1+16+1){
+      //   returnNack(host);
+      //   break;
+      // }
       stat = unlockCar(&host->buffer[1]);
       if(stat != 0){
         returnHostNack();
@@ -90,7 +90,8 @@ void process_board_uart(void){
       host->exchanged_ecdh = false;
       break;
     default:
-      returnAck(host);
+      // todo: fob does not expect a NACK
+      // returnAck(host);
       host->exchanged_ecdh = false;
       break;
   }

@@ -34,7 +34,7 @@
 
 // NOTE NOTE: This flag should be REMOVED for submission.
 // It's only here for debugging purposes
-#define RUN_UNENCRYPTED
+// #define RUN_UNENCRYPTED
 
 #ifdef RUN_UNENCRYPTED
 #warning("Running UART unencrypted!!!")
@@ -152,13 +152,13 @@ void process_received_packet(DATA_TRANSFER_T *host){
     // TODO: If this is a board commands, do a sanity check whether it is right to start
     // receiving a command
     if(host->buffer[0] == COMMAND_BYTE_NEW_MESSAGE_ECDH){
-      if(host->buffer_index != 1+AES_KEY_SIZE_BYTES+AES_IV_SIZE_BYTES){
+      if(host->buffer_index != 1+48+AES_IV_SIZE_BYTES){
         generate_ecdh_local_keys(host);
-        memcpy(host->buffer+1+AES_KEY_SIZE_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
+        memcpy(host->buffer+1+48, host->aes_iv, AES_IV_SIZE_BYTES);
         // NOTE: This can be a vulnerability if buffer size is not right
         setup_secure_aes(host, &host->buffer[1]);
         // TODO: Might have to re-do the aes key structure
-        generate_send_message(host, COMMAND_BYTE_RETURN_OWN_ECDH, host->ecc_public, AES_KEY_SIZE_BYTES);
+        generate_send_message(host, COMMAND_BYTE_RETURN_OWN_ECDH, host->ecc_public, 48);
         host->exchanged_ecdh = true;
       }
       else{
@@ -205,15 +205,15 @@ void returnAck(DATA_TRANSFER_T *host){
 }
 
 void create_new_secure_comms(DATA_TRANSFER_T *host){
-  uint8_t to_send[AES_KEY_SIZE_BYTES+AES_IV_SIZE_BYTES];
+  uint8_t to_send[48+AES_IV_SIZE_BYTES];
   generate_ecdh_local_keys(host);
   // Generate some AES IV
   get_random_bytes(host->aes_iv, AES_IV_SIZE_BYTES);
   // Copy the right packet into `to_send`
-  memcpy(to_send, host->ecc_public, AES_KEY_SIZE_BYTES);
-  memcpy(to_send+AES_KEY_SIZE_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
+  memcpy(to_send, host->ecc_public, 48);
+  memcpy(to_send+48, host->aes_iv, AES_IV_SIZE_BYTES);
   // Send it
-  generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, to_send, AES_KEY_SIZE_BYTES+AES_IV_SIZE_BYTES);
+  generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, to_send, 48+AES_IV_SIZE_BYTES);
 }
 
 void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public){
@@ -225,8 +225,8 @@ void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public){
  * A common message generator to the host and car/fob
  */
 void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_t *data, uint8_t len){
-  uint8_t to_send_msg[AES_BLOCKLEN*3];
-  memset(to_send_msg, 0, AES_BLOCKLEN*3);
+  uint8_t to_send_msg[AES_BLOCKLEN*5];
+  memset(to_send_msg, 0, AES_BLOCKLEN*5);
   uint8_t msg_len = 1;
   to_send_msg[1] = command;
   if(len != 0){
@@ -237,10 +237,10 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
   #ifndef RUN_UNENCRYPTED
   // Don't encrypt any COMMAND_BYTE_NEW_MESSAGE_ECDH or COMMAND_BYTE_RETURN_OWN_ECDH commands
   if(!(command == COMMAND_BYTE_NEW_MESSAGE_ECDH || command == COMMAND_BYTE_RETURN_OWN_ECDH)){
-    if(msg_len % AES_KEY_SIZE_BYTES != 0){
-      msg_len += AES_KEY_SIZE_BYTES-(msg_len % AES_KEY_SIZE_BYTES);
+    if(msg_len % AES_BLOCKLEN != 0){
+      msg_len += AES_BLOCKLEN-(msg_len % AES_BLOCKLEN);
     }
-    AES_ECB_encrypt(&host->aes_ctx, to_send_msg, msg_len);
+    AES_CBC_encrypt_buffer(&host->aes_ctx, to_send_msg+1, msg_len);
   }
   #endif
 

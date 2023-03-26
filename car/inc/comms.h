@@ -54,7 +54,7 @@ typedef struct
   uint8_t packet_size;    // The packet size to be received
   // The receive buffer and it's index from the host or fob.
   // NOTE: This buffer does NOT include the first packet length packet
-  uint8_t buffer[60];
+  uint8_t buffer[80];
   uint8_t buffer_index;
   uint16_t crc;
   // The message frame state
@@ -64,8 +64,8 @@ typedef struct
   struct AES_ctx aes_ctx;
   uint8_t aes_key[AES_KEY_SIZE_BYTES];
   // The ECDH public and secret keys and curve used to generate the shared key
-  uint8_t ecc_public[AES_KEY_SIZE_BYTES];
-  uint8_t ecc_secret[AES_KEY_SIZE_BYTES];
+  uint8_t ecc_public[48];
+  uint8_t ecc_secret[24];
   uint8_t aes_iv[AES_IV_SIZE_BYTES];
   // The UART base used for this specific host/device
   uint32_t uart_base;
