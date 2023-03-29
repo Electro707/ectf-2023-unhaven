@@ -46,7 +46,7 @@
 int8_t unlockCar(unsigned char *msg);
 
 // Declare password
-const uint8_t CAR_SECRET;
+const uint8_t car_secret[16] = CAR_SECRET;
 
 /**
  * @brief Main function for the car example

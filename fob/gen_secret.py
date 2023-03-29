@@ -16,7 +16,15 @@ import json
 import argparse
 from pathlib import Path
 import hashlib 
+from Crypto.Cipher import AES
 
+def bytearray_to_cstring(in_b: bytearray) -> str:
+    st = "{"
+    for c in in_b:
+        st += f"{c:d},"
+    st = st[:-1] + "}"
+
+    return st
 
 def main():
     parser = argparse.ArgumentParser()
@@ -30,27 +38,24 @@ def main():
     if args.paired:
         # Open the secret file, get the car's secret
         with open(args.secret_file, "r") as fp:
-            secrets = json.load(fp)
-            car_secret = secrets[str(args.car_id)+"_secret_str"]
-        
-        hashed_pin = hashlib.md5(args.pair_pin.encode('utf-8')).digest()
-        hashed_pin_str = "["
-        for h in hashed_pin:
-            hashed_pin_str += f"{h:d},"
-        hashed_pin_str = hashed_pin_str[:-1] + "]"
+            secrets_dict = json.load(fp)
+            car_secret = secrets_dict[str(args.car_id)+"_secret_ccode"]
+            feature_unlock = bytearray(secrets_dict["feature_unlock_key"])
 
-        with open(args.secret_file, "r") as fp:
-            secrets = json.load(fp)
-            feature_unlock = secrets["feature_unlock_key_str"]
+        hash_pin = hashlib.blake2s(args.pair_pin.encode('utf-8'), digest_size=16).digest()
+        print(len(hash_pin))
+        aes_cipher = AES.new(feature_unlock, AES.MODE_ECB)
+        encrypted_pin = aes_cipher.encrypt(hash_pin)
+
+        encrypted_pin_ccode = bytearray_to_cstring(encrypted_pin)
 
         # Write to header file
         with open(args.header_file, "w") as fp:
             fp.write("#ifndef __FOB_SECRETS__\n")
             fp.write("#define __FOB_SECRETS__\n\n")
             fp.write("#define PAIRED 1\n")
-            fp.write(f'#define PAIR_PIN "{hashed_pin_str}"\n')
-            fp.write(f'#define CAR_ID "{args.car_id}"\n')
-            fp.write(f'#define FEATURE_UNLOCK_KEY "{feature_unlock}"\n')
+            fp.write(f'#define PAIR_PIN {encrypted_pin_ccode}\n')
+            fp.write(f'#define CAR_ID {args.car_id}\n')
             # NOTE: This car secret is already in a nice string format
             fp.write(f'#define CAR_SECRET {car_secret}\n\n')
             fp.write("#endif\n")
@@ -60,8 +65,7 @@ def main():
             fp.write("#ifndef __FOB_SECRETS__\n")
             fp.write("#define __FOB_SECRETS__\n\n")
             fp.write("#define PAIRED 0\n")
-            fp.write('#define PAIR_PIN "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]"\n')
-            fp.write('#define FEATURE_UNLOCK_KEY "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]"\n')
+            fp.write('#define PAIR_PIN "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]"\n')
             fp.write('#define CAR_ID "000000"\n')
             fp.write('#define CAR_SECRET "000000"\n\n')
             fp.write("#endif\n")

@@ -49,18 +49,17 @@ typedef enum{
 typedef struct
 {
   PAIRED_STATE_e paired;           // Wether we are paired or not
-  uint8_t hashed_pin[16];   // The hashed pin
+  uint8_t encrypted_pin[16];   // The hashed pin
   uint8_t car_secret[16];   // The car secret
   uint8_t feature_bitfield;
 } FLASH_DATA;
 
 COMMAND_STATE_e message_state = COMMAND_STATE_RESET;
 
-const uint8_t CAR_SECRET;
-
 /*** Function definitions ***/
 // Core functions - all functionality supported by fob
 void saveFobState(FLASH_DATA *flash_data);
+void init_other_aes_context(void);
 
 int8_t process_received_new_feature(uint8_t *data);
 uint8_t get_if_paired(void);
@@ -70,8 +69,11 @@ static void sendCarUnlockToken(void);
 
 uint8_t unpaired_received_pin[16];
 
-static const uint8_t feature_unlock_key[16] = FEATURE_UNLOCK_KEY;
 struct AES_ctx feature_unlock_aes;
+struct AES_ctx pin_unlock_aes;
+
+static const uint8_t pre_programmed_pin[16] = PAIR_PIN;
+static const uint8_t pre_programmer_car_secret[16] = CAR_SECRET;
 
 FLASH_DATA fob_state_ram;
 
@@ -94,8 +96,8 @@ int main(void)
 #if PAIRED == 1
   if (fob_state_flash->paired == PAIRED_STATE_UNPAIRED)
   {
-    memcpy(fob_state_ram.hashed_pin, PAIR_PIN, 16);
-    memcpy(fob_state_ram.car_secret, car_secret, 16);
+    memcpy(fob_state_ram.encrypted_pin, pre_programmed_pin, 16);
+    memcpy(fob_state_ram.car_secret, pre_programmer_car_secret, 16);
     fob_state_ram.paired = PAIRED_STATE_PAIRED;
     saveFobState(&fob_state_ram);
   }
@@ -112,8 +114,11 @@ int main(void)
     saveFobState(&fob_state_ram);
   }
 
-  // Initialize AES context for feature unlock
-  //AES_init_ctx(&feature_unlock_aes, feature_unlock_key);
+  // Ensure EEPROM peripheral is enabled
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);
+  EEPROMInit();
+
+  init_other_aes_context();
 
   // Initialize board link UART
   setup_uart_links();
@@ -164,6 +169,16 @@ int main(void)
   }
 }
 
+void init_other_aes_context(void){
+  uint8_t eeprom_stuff[24];
+
+  EEPROMRead((uint32_t *)eeprom_stuff, 0x00, 24);
+  AES_init_ctx(&feature_unlock_aes, eeprom_stuff);
+
+  EEPROMRead((uint32_t *)eeprom_stuff, 0x20, 24);
+  AES_init_ctx(&pin_unlock_aes, eeprom_stuff);
+}
+
 /**
  * Function to process host message only from received data
  */
@@ -186,10 +201,6 @@ void process_host_uart(void){
       // TODO: Check if we are the unpaired fob
       if(get_if_paired() == 0){
         // TODO: Check for received secret
-        if(host->buffer_index != 16+1){
-          returnNack(host);
-          break;
-        }
         // Copy over the hashed pin to confirm with paired fob
         memcpy(unpaired_received_pin, &host->buffer[1], 16);
         // Create a secure connection with a paired fob and wait for received message
@@ -207,11 +218,6 @@ void process_host_uart(void){
     case COMMAND_BYTE_ENABLE_FEATURE:
       // Sanity check to make sure we are paired
       if(get_if_paired() != 1){
-        returnNack(host);
-        break;
-      }
-      // Sanity check for the buffer size
-      if(host->buffer_index != 1+32){
         returnNack(host);
         break;
       }
@@ -267,12 +273,7 @@ void process_board_uart(void){
         returnNack(host);
         break;
       }
-      // Sanity check for the buffer size
-      if(host->buffer_index != 1+16){
-        returnNack(host);
-        break;
-      }
-      if(memcmp(fob_state_ram.hashed_pin, host->buffer+1, 16)){
+      if(memcmp(fob_state_ram.encrypted_pin, host->buffer+1, 16)){
         // We now need to send the secrets to the unpaired fob
         generate_send_message(host, COMMAND_BYTE_RETURN_SECRET, fob_state_ram.car_secret, 16);
       }
@@ -290,14 +291,8 @@ void process_board_uart(void){
         // host->exchanged_ecdh = false;
         break;
       }
-      // Sanity check for the buffer size
-      if(host->buffer_index != 1+16){
-        returnNack(&host_comms);
-        // host->exchanged_ecdh = false;
-        break;
-      }
       // TODO: Store this in FLASH
-      memcpy(fob_state_ram.hashed_pin, unpaired_received_pin, 16);
+      memcpy(fob_state_ram.encrypted_pin, unpaired_received_pin, 16);
       memcpy(fob_state_ram.car_secret, &host->buffer[1], 16);
       fob_state_ram.paired = true;
       saveFobState(&fob_state_ram);
@@ -319,10 +314,10 @@ int8_t process_received_new_feature(uint8_t *data){
   uint8_t feature_number;
 
   AES_CBC_decrypt_buffer(&feature_unlock_aes, data, 32);
-  if(memcmp(data+0, CAR_ID, 6) != 0){
-    return -1;
-  }
-  if(memcmp(data+6, fob_state_ram.hashed_pin, 16) != 0){
+  // if(memcmp(data+0, CAR_ID, 6) != 0){
+    // return -1;
+  // }
+  if(memcmp(data+6, fob_state_ram.encrypted_pin, 16) != 0){
     return -1;
   }
   feature_number = *(data+6+16);

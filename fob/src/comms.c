@@ -100,18 +100,20 @@ void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host){
   switch(host->state){
     case RECEIVE_PACKET_STATE_RESET:
       host->packet_size = uart_char;
-      if(host->packet_size == 0){
+      if(host->packet_size < 3 || host->packet_size >= MAXIMUM_PACKET_SIZE){
         return;
       }
-      // if((host->packet_size % AES_BLOCKLEN) != 0){
-      //   return;
-      // }
       host->crc = 0;
       host->buffer_index = 0;
       host->state = RECEIVE_PACKET_STATE_DATA;
       break;
     case RECEIVE_PACKET_STATE_DATA:
-      host->buffer[host->buffer_index++] = uart_char;
+      host->buffer[host->buffer_index] = uart_char;
+      // The case below should never occur, but handle it anyways
+      if(++host->buffer_index >= MAXIMUM_DATA_BUFFER){
+        // todo: handle errors gracefully
+        host->state = RECEIVE_PACKET_STATE_RESET;
+      }
       if(--host->packet_size == 2){ // If we are on our last packet
         host->state = RECEIVE_PACKET_STATE_CRC;
       }
@@ -134,7 +136,7 @@ void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host){
  * underlaying communication protocol is the same.
 */
 void process_received_packet(DATA_TRANSFER_T *host){
-  if(host->buffer_index < 3){  // Smallest message must include at least ony byte and CRC
+  if(host->buffer_index < 3 || host->buffer_index > 80){  // Smallest message must include at least ony byte and CRC
     // TODO: Raise error: too short
     return;
   }
@@ -152,13 +154,13 @@ void process_received_packet(DATA_TRANSFER_T *host){
     // TODO: If this is a board commands, do a sanity check whether it is right to start
     // receiving a command
     if(host->buffer[0] == COMMAND_BYTE_NEW_MESSAGE_ECDH){
-      if(host->buffer_index != 1+48+AES_IV_SIZE_BYTES){
+      if(host->buffer_index != 1+ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES){   // Check size, which 
         generate_ecdh_local_keys(host);
-        memcpy(host->buffer+1+48, host->aes_iv, AES_IV_SIZE_BYTES);
+        memcpy(host->buffer+1+ECDH_PUBLIC_KEY_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
         // NOTE: This can be a vulnerability if buffer size is not right
         setup_secure_aes(host, &host->buffer[1]);
         // TODO: Might have to re-do the aes key structure
-        generate_send_message(host, COMMAND_BYTE_RETURN_OWN_ECDH, host->ecc_public, 48);
+        generate_send_message(host, COMMAND_BYTE_RETURN_OWN_ECDH, host->ecc_public, ECDH_PUBLIC_KEY_BYTES);
         host->exchanged_ecdh = true;
       }
       else{
@@ -205,15 +207,15 @@ void returnAck(DATA_TRANSFER_T *host){
 }
 
 void create_new_secure_comms(DATA_TRANSFER_T *host){
-  uint8_t to_send[48+AES_IV_SIZE_BYTES];
+  uint8_t to_send[ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES];
   generate_ecdh_local_keys(host);
   // Generate some AES IV
   get_random_bytes(host->aes_iv, AES_IV_SIZE_BYTES);
   // Copy the right packet into `to_send`
-  memcpy(to_send, host->ecc_public, 48);
-  memcpy(to_send+48, host->aes_iv, AES_IV_SIZE_BYTES);
+  memcpy(to_send, host->ecc_public, ECDH_PUBLIC_KEY_BYTES);
+  memcpy(to_send+ECDH_PUBLIC_KEY_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
   // Send it
-  generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, to_send, 48+AES_IV_SIZE_BYTES);
+  generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, to_send, ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES);
 }
 
 void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public){

@@ -18,4 +18,4 @@ __check_defined = \
 
 all:
 	$(call check_defined SECRETS_DIR)
-	python3 gen_global_secrets.py --secret-file ${SECRETS_DIR}/secrets.json
+	python3 gen_global_secrets.py --secret-file ${SECRETS_DIR}/secrets.json --eeprom-file ${SECRETS_DIR}/global_eeprom.dat

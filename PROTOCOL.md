@@ -4,25 +4,25 @@ This document gives an overview of the protcol used in this ECTF 2023 competitio
 ## Frame
 Each message will be packed in a frame. Each frame will have the following format (exceptions are noted):
 
-| Packet Size (1 byte) | Data ( n bytes in 16 byte chunks) | CRC (2 bytes)
+| Packet Size (1 byte) | Encrypted Data ( n bytes in 16 byte chunks) | CRC (2 bytes)
 
-- The packet size is bounded between 3 and x packets
+- The packet size is bounded between 3 and 80 bytes
 - The packet size includes the CRC
-- Data will be in 16 byte chunks except where specified. unused data shall be padded with random data
-    - NOTE: ^^ See about implementation
-- The data is ALWAYS encrypted with the shared AES key (more on that later) except when noted
+- Encrypted Data will be in 16 byte chunks except where specified
+- The encrypted data is ALWAYS encrypted with the shared AES key (more on that later) except where specified
+- Unused data shall be padded with random data
 
 ## Sizes
 - AES Block Size: 16 bytes
-- AES IV Size: 128 bites (16 bytes)
-- AES Key Size: 192 bytes (24 bytes)
+- AES IV Size: 128 bits (16 bytes)
+- AES Key Size: 192 bits (24 bytes)
 - ECDH Size: 192 bytes (24 bytes)
 - ECDH Public Key: 48 bytes
 
 ## Secrets
 The following secrets will be flashed per fob:
-- **Feature Encryption Key**: A key to decryption a feature data
-- **Pin Encryption Key**: A key that is used to encrypte a pin, which is how it's stored internally to the fob
+- **Feature Encryption Key (24 bytes)**: A key to decryption a feature data
+- **Pin Encryption Key (24 bytes)**: A key that is used to encrypte a pin, which is how it's stored internally to the fob
 
 The following secrets will be flashed per car and fob pair:
 - **Car Unlock Secret (16 bytes)**: A secret key that is used to authenticate a fob
@@ -33,17 +33,18 @@ Shown is only the data porting of a frame
 
 | Name                              | Data Structure                                                    | Notes                                                                     |
 |-----------------------------------|-------------------------------------------------------------------|---------------------------------------------------------------------------|
-| Establish Channel                 | `0xAB` > ECHD Public Key (48 bytes) > AES Start IV (16 bytes)     | The data is NOT ENCRYPTED && Data does not need to be in 16 byte chunks   |
-| Establish Channel Return          | `0xE0` > ECHD Public Key (48 bytes)                               | The data is NOT ENCRYPTED && Data does not need to be in 16 byte chunks   |
+| Establish Channel                 | `0xAB` > ECHD Public Key (48 bytes) > AES Start IV (16 bytes)     | The data is not encrypted, and the encrypted data format is not followed  |
+| Establish Channel Return          | `0xE0` > ECHD Public Key (48 bytes)                               | The data is not encrypted, and the encrypted data format is not followed  |
 | Set Paired fob in Pairing Mode    | `0x4D`                                                            |                                                                           |
-| Set Unpaired Fob to Pair          | `0x50` > Hashed Pin (28 bytes)                                    | This call will have the unpaired fob start communication with paired fob  |
-| Get Secret from Paired            | `0x47` > Encrypted Pin (32 bytes)                                 |                                                                           |
-| Return Secret from Paired         | `0x52` > Car Unlock Secret Key (16 bytes)                         |                                                                           |
+| Set Unpaired Fob to Pair          | `0x50` > Hashed Pin (16 bytes)                                    | This call will have the unpaired fob start communication with paired fob  |
+| Get Secret from Paired            | `0x47` > Encrypted Pin (16 bytes)                                 |                                                                           |
+| Return Secret from Paired         | `0x52` > Car Unlock Secret (16 bytes)                             |                                                                           |
 | ACK                               | `0x41`                                                            |                                                                           |
 | NACK                              | `0xAA`                                                            |                                                                           |
 | Enable Feature                    | `0x45` > Encrypted Feature data (48 bytes)                        |                                                                           |
 | Unlock Car                        | `0x55` > Car Unlock Secret (16 bytes) > Feature Bitfield (1 byte) |                                                                           |
-| Unlocked Car Message              | _64-bits + (64-bits * feature_enabled)_                           | This is an EEPROM memory dump of a specific location as per the rules     |
+| Unlocked Car Message              | _64-bits + (64-bits * feature_enabled)_                           | This is an EEPROM memory dump of a specific location as per the rules.    |
+|                                   |                                                                   |   The data format is not followed at all for this packet                  |
 
 ## Pin
 The pin, a 6-digit string, will be taken and hashed with BLAKE2 which will be called "Hashed Pin".
@@ -54,7 +55,7 @@ When transmitting the pin between fobs, the pin will be further encrypted with a
 ## Feature Data
 The un-encrypted feature data is defined as follows:
 
-Car ID (6 bytes) > Encrypted Pin (32 bytes) > Feature Number (1 byte, 0 to 3)
+Car ID (6 bytes) > Car Unlock Secret (16 bytes) > Feature Number (1 byte, 0 to 3)
 
 This data is padded to 48 bytes, then is encrypted with a Feature Encryption Key that is unique and stored per-fob
 

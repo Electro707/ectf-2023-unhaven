@@ -37,7 +37,7 @@ include ${TIVA_ROOT}/makedefs
 
 
 # Optimizations
-CFLAGS+=-Os
+CFLAGS+=-O0
 
 # check that parameters are defined
 check_defined = \
@@ -106,6 +106,8 @@ ECDHPATH=${ROOT}/lib/micro-ecc
 VPATH+=${ECDHPATH}
 IPATH+=${ECDHPATH}
 ${COMPILER}/firmware.axf: ${COMPILER}/uECC.o
+CFLAGSgcc+=-fomit-frame-pointer
+CFLAGS+=-DuECC_OPTIMIZATION_LEVEL=3 -DuECC_PLATFORM=uECC_arm_thumb2
 
 # build libraries
 ${TIVA_ROOT}/driverlib/${COMPILER}/libdriver.a:
@@ -138,7 +140,7 @@ ${COMPILER}/firmware.axf: ${TIVA_ROOT}/driverlib/${COMPILER}/libdriver.a
 copy_artifacts:
 	cp ${COMPILER}/firmware.bin ${BIN_PATH}
 	cp ${COMPILER}/firmware.axf ${ELF_PATH}
-	cp ${SECRETS_DIR}/global_secrets.txt ${EEPROM_PATH}
+	cp ${SECRETS_DIR}/global_eeprom.dat ${EEPROM_PATH}
 
 SCATTERgcc_firmware=${TIVA_ROOT}/firmware.ld
 ENTRY_firmware=Firmware_Startup

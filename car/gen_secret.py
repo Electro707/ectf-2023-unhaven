@@ -15,7 +15,15 @@
 import json
 import argparse
 from pathlib import Path
-import random
+import secrets
+
+def bytearray_to_cstring(in_b: bytearray) -> str:
+    st = "{"
+    for c in in_b:
+        st += f"{c:d},"
+    st = st[:-1] + "}"
+
+    return st
 
 def main():
     parser = argparse.ArgumentParser()
@@ -27,23 +35,17 @@ def main():
     # Open the secret file if it exists
     if args.secret_file.exists():
         with open(args.secret_file, "r") as fp:
-            secrets = json.load(fp)
+            secrets_dict = json.load(fp)
     else:
-        secrets = {}
+        secrets_dict = {}
 
-    car_secret = random.randint(0, 2**(16*8))
-
-    car_secret = car_secret.to_bytes(16, 'big')
-    car_secret_str = "car_secret[16] = {"
-    for c in car_secret:
-        car_secret_str += f"{c:d},"
-    car_secret_str = car_secret_str[:-1] + "}"
+    car_secret = secrets.token_bytes(16)
+    car_secret_str = bytearray_to_cstring(car_secret)
+    secrets_dict[str(args.car_id)+"_secret_ccode"] = car_secret_str
     
-    secrets[str(args.car_id)+"_secret_str"] = car_secret_str
-
     # Save the secret file
     with open(args.secret_file, "w") as fp:
-        json.dump(secrets, fp, indent=4)
+        json.dump(secrets_dict, fp, indent=4)
 
     # Write to header file
     with open(args.header_file, "w") as fp:

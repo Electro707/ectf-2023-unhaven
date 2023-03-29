@@ -25,6 +25,13 @@
 #define AES_KEY_SIZE_BYTES AES_KEY_SIZE/8
 #define AES_IV_SIZE_BYTES 16
 
+
+#define ECDH_PRIVATE_KEY_BYTES 24
+#define ECDH_PUBLIC_KEY_BYTES ECDH_PRIVATE_KEY_BYTES*2
+
+#define MAXIMUM_DATA_BUFFER 80
+#define MAXIMUM_PACKET_SIZE MAXIMUM_DATA_BUFFER+2
+
 typedef enum {
   RECEIVE_PACKET_STATE_RESET = 0,     // The device is doing nothing
   RECEIVE_PACKET_STATE_DATA, // The device last received a DEHC public key
@@ -54,7 +61,7 @@ typedef struct
   uint8_t packet_size;    // The packet size to be received
   // The receive buffer and it's index from the host or fob.
   // NOTE: This buffer does NOT include the first packet length packet
-  uint8_t buffer[80];
+  uint8_t buffer[MAXIMUM_DATA_BUFFER];
   uint8_t buffer_index;
   uint16_t crc;
   // The message frame state
@@ -64,8 +71,8 @@ typedef struct
   struct AES_ctx aes_ctx;
   uint8_t aes_key[AES_KEY_SIZE_BYTES];
   // The ECDH public and secret keys and curve used to generate the shared key
-  uint8_t ecc_public[48];
-  uint8_t ecc_secret[24];
+  uint8_t ecc_public[ECDH_PUBLIC_KEY_BYTES];
+  uint8_t ecc_secret[ECDH_PRIVATE_KEY_BYTES];
   uint8_t aes_iv[AES_IV_SIZE_BYTES];
   // The UART base used for this specific host/device
   uint32_t uart_base;
