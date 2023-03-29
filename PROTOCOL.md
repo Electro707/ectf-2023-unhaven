@@ -21,8 +21,8 @@ Each message will be packed in a frame. Each frame will have the following forma
 
 ## Secrets
 The following secrets will be flashed per fob:
-- **Feature Encryption Key (24 bytes)**: A key to decryption a feature data
-- **Pin Encryption Key (24 bytes)**: A key that is used to encrypte a pin, which is how it's stored internally to the fob
+- **Feature AES Key (24 bytes)**: A key to decryption a feature data
+- **Pin AES Key (24 bytes)**: A key that is used to encrypte a pin, which is how it's stored internally to the fob
 
 The following secrets will be flashed per car and fob pair:
 - **Car Unlock Secret (16 bytes)**: A secret key that is used to authenticate a fob
@@ -41,7 +41,7 @@ Shown is only the data porting of a frame
 | Return Secret from Paired         | `0x52` > Car Unlock Secret (16 bytes)                             |                                                                           |
 | ACK                               | `0x41`                                                            |                                                                           |
 | NACK                              | `0xAA`                                                            |                                                                           |
-| Enable Feature                    | `0x45` > Encrypted Feature data (48 bytes)                        |                                                                           |
+| Enable Feature                    | `0x45` > Encrypted Feature data (32 bytes)                        |                                                                           |
 | Unlock Car                        | `0x55` > Car Unlock Secret (16 bytes) > Feature Bitfield (1 byte) |                                                                           |
 | Unlocked Car Message              | _64-bits + (64-bits * feature_enabled)_                           | This is an EEPROM memory dump of a specific location as per the rules.    |
 |                                   |                                                                   |   The data format is not followed at all for this packet                  |
@@ -55,9 +55,9 @@ When transmitting the pin between fobs, the pin will be further encrypted with a
 ## Feature Data
 The un-encrypted feature data is defined as follows:
 
-Car ID (6 bytes) > Car Unlock Secret (16 bytes) > Feature Number (1 byte, 0 to 3)
+Car Unlock Secret (16 bytes) > Feature Number (1 byte, 0 to 3)
 
-This data is padded to 48 bytes, then is encrypted with a Feature Encryption Key that is unique and stored per-fob
+This data is padded to 32 bytes, then is encrypted with a Feature Encryption Key that is unique and stored per-fob
 
 ## Transactions
 The following section describes the different possible transactions

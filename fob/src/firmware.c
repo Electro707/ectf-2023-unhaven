@@ -241,7 +241,8 @@ void process_board_uart(void){
       // This can happen either because we are a unpaired fob and just established comms with paired fob,
       // Or we are a paired fob trying to communicate with a car
       // TODO: Add general check around message_state
-      if(host->buffer_index != 1+48){
+      if(host->buffer_index != 1+ECDH_PUBLIC_KEY_BYTES){
+        // Return a NACK to the host as well if we fail ECDH and we are pairing
         if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
           returnNack(&host_comms);
         }
@@ -283,12 +284,9 @@ void process_board_uart(void){
       break;
     case COMMAND_BYTE_RETURN_SECRET:
       // If we are the unpaired fob and we just got our secret, yay
-      message_state = COMMAND_STATE_RESET;
-        host->exchanged_ecdh = false;
       if(get_if_paired() != 0){
         // We send a NACK back to the host
         returnNack(&host_comms);
-        // host->exchanged_ecdh = false;
         break;
       }
       // TODO: Store this in FLASH
@@ -297,7 +295,8 @@ void process_board_uart(void){
       fob_state_ram.paired = true;
       saveFobState(&fob_state_ram);
       returnAck(&host_comms);
-      // host->exchanged_ecdh = false;
+      message_state = COMMAND_STATE_RESET;
+      host->exchanged_ecdh = false;
       break;
     case COMMAND_BYTE_NACK:
       // I mean there isn't much to do here, other than reset
@@ -314,14 +313,14 @@ int8_t process_received_new_feature(uint8_t *data){
   uint8_t feature_number;
 
   AES_CBC_decrypt_buffer(&feature_unlock_aes, data, 32);
-  // if(memcmp(data+0, CAR_ID, 6) != 0){
-    // return -1;
-  // }
-  if(memcmp(data+6, fob_state_ram.encrypted_pin, 16) != 0){
+  if(memcmp(data, fob_state_ram.encrypted_pin, 16) != 0){
     return -1;
   }
-  feature_number = *(data+6+16);
+  feature_number = *(data+16);
   // TODO: Maybe add a check around the feature_number number
+  if(feature_number >= 3){
+    return -1;
+  }
   fob_state_ram.feature_bitfield |= (1 << feature_number);
   saveFobState(&fob_state_ram);
   return 0;
