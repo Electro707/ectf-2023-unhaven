@@ -15,6 +15,8 @@
 import socket
 import argparse
 
+from host_tools.ECDH_exchange import ecdh_exchange
+
 
 # @brief Function to send commands to enable a feature on a fob
 # @param fob_bridge, bridged serial connection to fob
@@ -25,8 +27,10 @@ def enable(fob_bridge, package_name):
     fob_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     fob_sock.connect(("ectf-net", int(fob_bridge)))
 
+    ecdh_exchange()
+
     # Send enable command to fob
-    fob_sock.send(b"enable\n")
+    fob_sock.send(b'e')
 
     # Open and read binary data from package file
     with open(f"/package_dir/{package_name}", "rb") as fhandle:
@@ -46,6 +50,8 @@ def enable(fob_bridge, package_name):
         print(enable_success)
     except socket.timeout:
         print("Failed to enable feature")
+    except enable_success == 0xAA:
+        print("Feature not enabled, Rejected by fob.")
 
     return 0
 

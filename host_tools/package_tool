@@ -13,29 +13,43 @@
 # @copyright Copyright (c) 2023 The MITRE Corporation
 
 import argparse
+import json
+from Crypto.Cipher import AES
 
+SECRETS_JSON_PATH = "/secrets/secrets.json"
+PACKED_EXPORT_PATH = "."
 
 # @brief Function to create a new feature package
 # @param package_name, name of the file to output package data to
 # @param car_id, the id of the car the feature is being packaged for
 # @param feature_number, the feature number being packaged
-def package(package_name, car_id, feature_number):
+def package(package_name, car_id, feature_number, alt_directory):
+    if alt_directory:
+        with open(PACKED_EXPORT_PATH, "r") as fhandle:
+            secrets = json.load(fhandle)
+    else:
+        with open(SECRETS_JSON_PATH, "r") as fhandle:
+            secrets = json.load(fhandle)
+    # This is the key we encrypt out stuff with
+    feature_encryption_key = secrets["feature_unlock_key"]
+    car_secret_bytes = secrets[str(car_id)+"_secret"]       # type: bytearray
+    aes_cipher = AES.new(feature_encryption_key, AES.MODE_ECB)
 
-    # Pad id lenth to 8 bytes
-    car_id_len = len(car_id)
-    car_id_pad = (8 - car_id_len) * "\0"
+    # TODO: Check if number is betwwen 1 and 3
+    car_secret_bytes.extend(feature_number.encode('utf-8'))
 
-    # Create package to match defined structure on fob
-    package_message_bytes = (
-        str.encode(car_id + car_id_pad)
-        + feature_number.to_bytes(1, "little")
-        + str.encode("\n")
-    )
+    ciphertext, tag = aes_cipher.encrypt_and_digest(car_secret_bytes)
+
+
 
     # Write data out to package file
     # /package_dir/ is the mounted location inside the container - should not change
-    with open(f"/package_dir/{package_name}", "wb") as fhandle:
-        fhandle.write(package_message_bytes)
+    if alt_directory:
+        with open(f"{PACKED_EXPORT_PATH}/{package_name}", "wb") as fhandle:
+            fhandle.write(ciphertext)
+    else:
+        with open(f"{SECRETS_JSON_PATH}/{package_name}", "wb") as fhandle:
+            fhandle.write(ciphertext)
 
     print("Feature packaged")
 
@@ -58,10 +72,16 @@ def main():
         type=int,
         required=True,
     )
+    parser.add_argument(
+        "--alt-directory",
+        help="Allows the file to pull the secrets from the local directory",
+        type=bool,
+        required=False,
+    )
 
     args = parser.parse_args()
 
-    package(args.package_name, args.car_id, args.feature_number)
+    package(args.package_name, args.car_id, args.feature_number, args.alt_directoy)
 
 
 if __name__ == "__main__":
