@@ -154,9 +154,9 @@ void process_received_packet(DATA_TRANSFER_T *host){
     // TODO: If this is a board commands, do a sanity check whether it is right to start
     // receiving a command
     if(host->buffer[0] == COMMAND_BYTE_NEW_MESSAGE_ECDH){
-      if(host->buffer_index != 1+ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES){   // Check size, which 
+      if(host->buffer_index == 1+ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES){   // Check size, which 
         generate_ecdh_local_keys(host);
-        memcpy(host->buffer+1+ECDH_PUBLIC_KEY_BYTES, host->aes_iv, AES_IV_SIZE_BYTES);
+        memcpy(host->aes_iv, host->buffer+1+ECDH_PUBLIC_KEY_BYTES, AES_IV_SIZE_BYTES);
         // NOTE: This can be a vulnerability if buffer size is not right
         setup_secure_aes(host, &host->buffer[1]);
         // TODO: Might have to re-do the aes key structure
@@ -164,6 +164,7 @@ void process_received_packet(DATA_TRANSFER_T *host){
         host->exchanged_ecdh = true;
       }
       else{
+        // todo: This returns as encrypted, while not having any encryption key
         returnNack(host);
       }
     }
@@ -177,6 +178,7 @@ void process_received_packet(DATA_TRANSFER_T *host){
   }
   else{
 #ifndef RUN_UNENCRYPTED
+      AES_ctx_set_iv(&host->aes_ctx, &host->aes_iv);
       AES_CBC_decrypt_buffer(&host->aes_ctx, host->buffer, host->buffer_index);
 #endif
     if(host == &host_comms){
@@ -242,6 +244,7 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
     if(msg_len % AES_BLOCKLEN != 0){
       msg_len += AES_BLOCKLEN-(msg_len % AES_BLOCKLEN);
     }
+    AES_ctx_set_iv(&host->aes_ctx, &host->aes_iv);
     AES_CBC_encrypt_buffer(&host->aes_ctx, to_send_msg+1, msg_len);
   }
   #endif

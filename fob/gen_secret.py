@@ -65,7 +65,7 @@ def main():
             fp.write("#ifndef __FOB_SECRETS__\n")
             fp.write("#define __FOB_SECRETS__\n\n")
             fp.write("#define PAIRED 0\n")
-            fp.write('#define PAIR_PIN "[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]"\n')
+            fp.write('#define PAIR_PIN {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}\n')
             fp.write('#define CAR_ID "000000"\n')
             fp.write('#define CAR_SECRET "000000"\n\n')
             fp.write("#endif\n")

@@ -10,4 +10,4 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     python3-pycryptodome \
     python3-pip
 
-RUN pip install pycryptodome
+RUN pip install pycryptodome crcmod cryptography

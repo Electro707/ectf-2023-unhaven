@@ -40,7 +40,7 @@ static const uint16_t crc16_table[256] = {
 
 //https://www.devcoons.com/crc16-simple-algorithm-c/
 uint16_t calculate_crc(uint8_t *data, uint8_t len){
-    uint16_t crc = 0;
+    uint16_t crc = 0xFFFF;
     
     while(len--){
         crc = (crc >> 8) ^ crc16_table[(crc ^ *data++) & 0xFF];

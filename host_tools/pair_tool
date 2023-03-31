@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -u
-
+import logging
 # @file pair_tool
 # @author Frederich Stine
 # @brief host tool for pairing a new key fob
@@ -14,8 +14,10 @@
 
 import socket
 import argparse
+import time
 
-from host_tools.ECDH_exchange import ecdh_exchange
+from common import FobConnection
+from cryptography.hazmat.primitives import hashes
 
 
 # @brief Function to send commands to pair
@@ -26,20 +28,39 @@ from host_tools.ECDH_exchange import ecdh_exchange
 def pair(unpaired_fob_bridge, paired_fob_bridge, pair_pin):
 
     # Connect to both sockets for serial
-    unpaired_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    unpaired_sock.connect(("ectf-net", int(unpaired_fob_bridge)))
-
-    ecdh_exchange()
+    # unpaired_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # unpaired_sock.connect(("ectf-net", int(unpaired_fob_bridge)))
 
     paired_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    paired_sock.connect(("ectf-net", int(paired_fob_bridge)))
+    paired_sock.connect(("0.0.0.0", int(paired_fob_bridge)))
 
-    ecdh_exchange()
+
+    # TODO: Change for release
+    # unpaired_sock.settimeout(60)
+    paired_sock.settimeout(60)
+
+    paired_d = FobConnection(paired_sock)
+    # unpaired_d = FobConnection(unpaired_sock)
+
+    paired_d.ecdh_exchange()
 
     # Send pair commands to both fobs
-    unpaired_sock.send(b'0x4d')
+    paired_d.send_packet(0x4D)
+    paired_d.wait_for_ack()
 
-    unpaired_sock.settimeout(5)
+    # todo: not tested beyond this point!
+    return
+
+    digest = hashes.Hash(hashes.BLAKE2s(16))
+    digest.update(pair_pin.encode('utf-8'))
+    pair_pin = digest.finalize()
+
+    paired_d.send_packet(0x50, pair_pin)
+    # todo: set longer timeout to let devices do their thing
+    paired_d.wait_for_ack()
+
+
+
     # Acknowlege --  if failed, pairing failed
     try:
         pair_success = unpaired_sock.recv(6)
@@ -92,6 +113,8 @@ def main():
     parser.add_argument(
         "--pair-pin", help="Program PIN", type=str, required=True,
     )
+
+    logging.basicConfig(level=logging.DEBUG)
 
     args = parser.parse_args()
 
