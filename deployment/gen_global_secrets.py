@@ -33,6 +33,7 @@ def main():
     secrets_dict["feature_unlock_key_ccode"] = bytearray_to_cstring(feature_unlock)
 
     pin_encrypted_secret = secrets.token_bytes(24)
+    secrets_dict["pin_encrypt_key"] = list(pin_encrypted_secret)
 
     # Write to a JSON file so that we can read it later
     with open(args.secret_file, "w") as fp:

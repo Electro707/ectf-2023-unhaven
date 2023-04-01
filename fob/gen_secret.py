@@ -40,11 +40,10 @@ def main():
         with open(args.secret_file, "r") as fp:
             secrets_dict = json.load(fp)
             car_secret = secrets_dict[str(args.car_id)+"_secret_ccode"]
-            feature_unlock = bytearray(secrets_dict["feature_unlock_key"])
+            pin_encrypt = bytearray(secrets_dict["pin_encrypt_key"])
 
         hash_pin = hashlib.blake2s(args.pair_pin.encode('utf-8'), digest_size=16).digest()
-        print(len(hash_pin))
-        aes_cipher = AES.new(feature_unlock, AES.MODE_ECB)
+        aes_cipher = AES.new(pin_encrypt, AES.MODE_ECB)
         encrypted_pin = aes_cipher.encrypt(hash_pin)
 
         encrypted_pin_ccode = bytearray_to_cstring(encrypted_pin)

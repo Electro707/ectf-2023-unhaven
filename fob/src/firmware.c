@@ -249,11 +249,13 @@ void process_board_uart(void){
         returnNack(host);
         break;
       }
+      host->exchanged_ecdh = true;
       setup_secure_aes(host, &host->buffer[1]);
       // TODO: Initialize the internal AES context with generated key
       if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
         // We send out our hashed pairing key in order to get the secret
         // TODO: Add check
+        AES_ECB_encrypt(&pin_unlock_aes, unpaired_received_pin);
         generate_send_message(host, COMMAND_BYTE_GET_SECRET, unpaired_received_pin, 16);
       }
       else if(message_state == COMMAND_STATE_WAITING_FOR_CAR_ECDH){
@@ -274,7 +276,7 @@ void process_board_uart(void){
         returnNack(host);
         break;
       }
-      if(memcmp(fob_state_ram.encrypted_pin, host->buffer+1, 16)){
+      if(memcmp(fob_state_ram.encrypted_pin, host->buffer+1, 16) == 0){
         // We now need to send the secrets to the unpaired fob
         generate_send_message(host, COMMAND_BYTE_RETURN_SECRET, fob_state_ram.car_secret, 16);
       }
@@ -289,14 +291,14 @@ void process_board_uart(void){
         returnNack(&host_comms);
         break;
       }
-      // TODO: Store this in FLASH
       memcpy(fob_state_ram.encrypted_pin, unpaired_received_pin, 16);
       memcpy(fob_state_ram.car_secret, &host->buffer[1], 16);
-      fob_state_ram.paired = true;
+      fob_state_ram.paired = PAIRED_STATE_PAIRED;
       saveFobState(&fob_state_ram);
       returnAck(&host_comms);
       message_state = COMMAND_STATE_RESET;
       host->exchanged_ecdh = false;
+      host_comms.exchanged_ecdh = false;
       break;
     case COMMAND_BYTE_NACK:
       // I mean there isn't much to do here, other than reset
