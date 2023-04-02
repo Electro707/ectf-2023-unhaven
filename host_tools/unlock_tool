@@ -15,9 +15,6 @@
 import socket
 import argparse
 
-from host_tools.ECDH_exchange import ecdh_exchange
-
-
 # @brief Function to monitor unlocking car
 # @param car_bridge, bridged serial connection to car
 def unlock(car_bridge):
@@ -25,8 +22,6 @@ def unlock(car_bridge):
     # Connect car socket to serial
     car_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     car_sock.connect(("ectf-net", int(car_bridge)))
-
-    ecdh_exchange()
 
     # Set timeout for if unlock fails
     car_sock.settimeout(5)
