@@ -40,6 +40,10 @@
 #warning("Running UART unencrypted!!!")
 #endif
 
+#ifdef RUN_WITH_DEBUG_UART
+#warning("RUNNING WITH DEBUG UART!!!!")
+#endif
+
 DATA_TRANSFER_T host_comms;
 DATA_TRANSFER_T board_comms;
 
@@ -260,6 +264,8 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
   uart_write(host->uart_base, to_send_msg, msg_len);
 }
 
+#ifdef RUN_WITH_DEBUG_UART
+
 void uart_debug_strln(const char *str){
   uart_write(DEBUG_UART, (uint8_t *)str, strlen(str));
   uart_debug_newline();
@@ -285,6 +291,20 @@ void uart_debug_number(uint32_t numb){
 void uart_debug_newline(void){
   uart_writeb(DEBUG_UART, '\n');
 }
+
+#else
+
+void uart_debug_strln(const char *str){
+  // Do nothing if RUN_WITH_DEBUG_UART isn't set
+}
+void uart_debug_number(uint32_t numb){
+  // Do nothing if RUN_WITH_DEBUG_UART isn't set
+}
+void uart_debug_newline(void){
+  // Do nothing if RUN_WITH_DEBUG_UART isn't set
+}
+
+#endif
 
 uint32_t get_random_seed(){
   return SysTickValueGet();

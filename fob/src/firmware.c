@@ -124,7 +124,9 @@ int main(void)
   // Initialize board link UART
   setup_uart_links();
 
+#ifdef RUN_WITH_DEBUG_UART
   uart_init_debug();
+#endif
 
   // Setup SW1
   GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);
@@ -159,11 +161,6 @@ int main(void)
       if (debounce_sw_state == current_sw_state)
       {
         startUnlockCar();
-        // unlockCar(&fob_state_ram);
-        // if (receiveAck())
-        // {
-        //   startCar(&fob_state_ram);
-        // }
       }
     }
     previous_sw_state = current_sw_state;
@@ -264,6 +261,7 @@ void process_board_uart(void){
         // TODO: Add check
         AES_ECB_encrypt(&pin_unlock_aes, unpaired_received_pin);
         generate_send_message(host, COMMAND_BYTE_GET_SECRET, unpaired_received_pin, 16);
+        message_state = COMMAND_STATE_WAITING_FOR_SECRET;
       }
       else if(message_state == COMMAND_STATE_WAITING_FOR_CAR_ECDH){
         sendCarUnlockToken();
@@ -312,6 +310,10 @@ void process_board_uart(void){
       // I mean there isn't much to do here, other than reset
       host->exchanged_ecdh = false;
       message_state = COMMAND_STATE_RESET;
+      // If we got a NACK from the other paired fob, let the host know about it
+      if(message_state == COMMAND_STATE_WAITING_FOR_SECRET){
+        returnNack(&host_comms);
+      }
       break;
     default:
       // TODO: Do something, probably

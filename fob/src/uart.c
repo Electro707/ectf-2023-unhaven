@@ -90,6 +90,7 @@ void uart_init_board(void){
   }
 }
 
+#ifdef RUN_WITH_DEBUG_UART
 /**
  * Debug UART (used for debugging, duh!)
  *
@@ -109,6 +110,7 @@ void uart_init_debug(void){
       DEBUG_UART, SysCtlClockGet(), 115200,
       (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
 }
+#endif
 
 /**
  * @brief Check if there are characters available on a UART interface.
