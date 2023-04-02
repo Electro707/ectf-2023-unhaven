@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 class ReadException(Exception):
     pass
 
+
 class FobConnection:
     def __init__(self, s: socket.socket):
         self.log = logging.getLogger('device')
@@ -98,8 +99,6 @@ class FobConnection:
         self.aes_iv = secrets.token_bytes(16)
 
         to_send = 0xAB.to_bytes(1, 'big') + self_public + self.aes_iv
-
-        print(self.aes_iv)
 
         self.send_frame(to_send, encrypted=False)
         rec = self.receive_frame(encrypted=False)

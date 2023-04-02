@@ -47,6 +47,7 @@ typedef enum {
   COMMAND_BYTE_UNPARED_IN_PARING_MODE = 0x50,
   COMMAND_BYTE_GET_SECRET = 0x47,
   COMMAND_BYTE_RETURN_SECRET = 0x52,
+  COMMAND_BYTE_PAIRING_DONE = 0x48,
   // Feature related commands
   COMMAND_BYTE_ENABLE_FEATURE = 0x45,
   // Car unlocking locking

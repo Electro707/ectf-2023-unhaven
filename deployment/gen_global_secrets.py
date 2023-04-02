@@ -30,7 +30,9 @@ def main():
 
     feature_unlock = secrets.token_bytes(24)
     secrets_dict["feature_unlock_key"] = list(feature_unlock)
-    secrets_dict["feature_unlock_key_ccode"] = bytearray_to_cstring(feature_unlock)
+
+    feature_unlock_iv = secrets.token_bytes(16)
+    secrets_dict["feature_unlock_key_iv"] = list(feature_unlock_iv)
 
     pin_encrypted_secret = secrets.token_bytes(24)
     secrets_dict["pin_encrypt_key"] = list(pin_encrypted_secret)
@@ -42,6 +44,8 @@ def main():
     with open(args.eeprom_file, "wb") as fp:
         fp.write(feature_unlock)
         fp.write(bytearray(32-24))      # Zero padding
+        fp.write(feature_unlock_iv)
+        fp.write(bytearray(32-16))      # Zero padding
         fp.write(pin_encrypted_secret)
         fp.write(bytearray(32-24))      # Zero padding
 

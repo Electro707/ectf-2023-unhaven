@@ -41,6 +41,7 @@ def main():
 
     car_secret = secrets.token_bytes(16)
     car_secret_str = bytearray_to_cstring(car_secret)
+    secrets_dict[str(args.car_id)+"_secret"] = list(car_secret)
     secrets_dict[str(args.car_id)+"_secret_ccode"] = car_secret_str
     
     # Save the secret file

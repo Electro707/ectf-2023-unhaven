@@ -70,6 +70,7 @@ static void sendCarUnlockToken(void);
 uint8_t unpaired_received_pin[16];
 
 struct AES_ctx feature_unlock_aes;
+static uint8_t feature_unlock_iv[16];
 struct AES_ctx pin_unlock_aes;
 
 static const uint8_t pre_programmed_pin[16] = PAIR_PIN;
@@ -173,9 +174,10 @@ void init_other_aes_context(void){
   uint8_t eeprom_stuff[24];
 
   EEPROMRead((uint32_t *)eeprom_stuff, 0x00, 24);
-  AES_init_ctx(&feature_unlock_aes, eeprom_stuff);
+  EEPROMRead((uint32_t *)feature_unlock_iv, 0x20, 16);
+  AES_init_ctx_iv(&feature_unlock_aes, eeprom_stuff, feature_unlock_iv);
 
-  EEPROMRead((uint32_t *)eeprom_stuff, 0x20, 24);
+  EEPROMRead((uint32_t *)eeprom_stuff, 0x40, 24);
   AES_init_ctx(&pin_unlock_aes, eeprom_stuff);
 }
 
@@ -210,6 +212,7 @@ void process_host_uart(void){
         // board_comms.exchanged_ecdh == true;
         // TODO: Move the stuff above in a function in comms.c
         message_state = COMMAND_STATE_WAITING_FOR_PAIRED_ECDH;
+        returnAck(host);
       }
       else{
         returnNack(host);
@@ -221,10 +224,14 @@ void process_host_uart(void){
         returnNack(host);
         break;
       }
-      stat = process_received_new_feature(host->buffer);
-      if(stat != 0){
+      stat = process_received_new_feature(host->buffer+1);
+      if(stat == 0){
+        returnAck(host);
+        host->exchanged_ecdh = false;
+        message_state = COMMAND_STATE_RESET;
+      }
+      else{
         returnNack(host);
-        break;
       }
       break;
     default:
@@ -295,7 +302,8 @@ void process_board_uart(void){
       memcpy(fob_state_ram.car_secret, &host->buffer[1], 16);
       fob_state_ram.paired = PAIRED_STATE_PAIRED;
       saveFobState(&fob_state_ram);
-      returnAck(&host_comms);
+      // Send a pairing done to the host
+      generate_send_message(&host_comms, COMMAND_BYTE_PAIRING_DONE, NULL, 0);
       message_state = COMMAND_STATE_RESET;
       host->exchanged_ecdh = false;
       host_comms.exchanged_ecdh = false;
@@ -314,12 +322,12 @@ void process_board_uart(void){
 int8_t process_received_new_feature(uint8_t *data){
   uint8_t feature_number;
 
+  AES_ctx_set_iv(&feature_unlock_aes, feature_unlock_iv);
   AES_CBC_decrypt_buffer(&feature_unlock_aes, data, 32);
-  if(memcmp(data, fob_state_ram.encrypted_pin, 16) != 0){
+  if(memcmp(data+15, fob_state_ram.car_secret, 16) != 0){
     return -1;
   }
-  feature_number = *(data+16);
-  // TODO: Maybe add a check around the feature_number number
+  feature_number = *(data+16+15);
   if(feature_number >= 3){
     return -1;
   }

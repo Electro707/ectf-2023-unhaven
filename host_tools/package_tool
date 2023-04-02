@@ -14,42 +14,42 @@
 
 import argparse
 import json
+import struct
+import secrets
 from Crypto.Cipher import AES
 
 SECRETS_JSON_PATH = "/secrets/secrets.json"
-PACKED_EXPORT_PATH = "."
 
 # @brief Function to create a new feature package
 # @param package_name, name of the file to output package data to
 # @param car_id, the id of the car the feature is being packaged for
 # @param feature_number, the feature number being packaged
-def package(package_name, car_id, feature_number, alt_directory):
-    if alt_directory:
-        with open(PACKED_EXPORT_PATH, "r") as fhandle:
-            secrets = json.load(fhandle)
-    else:
-        with open(SECRETS_JSON_PATH, "r") as fhandle:
-            secrets = json.load(fhandle)
+def package(package_name, car_id, feature_number, package_dir):
+    with open(SECRETS_JSON_PATH, "r") as fhandle:
+        secrets_json = json.load(fhandle)
     # This is the key we encrypt out stuff with
-    feature_encryption_key = secrets["feature_unlock_key"]
-    car_secret_bytes = secrets[str(car_id)+"_secret"]       # type: bytearray
-    aes_cipher = AES.new(feature_encryption_key, AES.MODE_ECB)
+    feature_encryption_key = bytearray(secrets_json["feature_unlock_key"])
+    feature_encryption_key_iv = bytearray(secrets_json["feature_unlock_key_iv"])
+    car_secret_bytes = bytearray(secrets_json[str(car_id)+"_secret"])
+    aes_cipher = AES.new(feature_encryption_key, AES.MODE_CBC, iv=feature_encryption_key_iv)
 
-    # TODO: Check if number is betwwen 1 and 3
-    car_secret_bytes.extend(feature_number.encode('utf-8'))
+    print(car_secret_bytes)
 
-    ciphertext, tag = aes_cipher.encrypt_and_digest(car_secret_bytes)
+    to_encrypt = bytearray(secrets.token_bytes(15))
+    to_encrypt += car_secret_bytes
 
+    feature_number -= 1     # Made the feature number (given as 1->3) to 0->2
+    if feature_number < 0 or feature_number >= 3:
+        print("Invalid feature number")
+        return
+    to_encrypt.extend(struct.pack("B", feature_number))
 
+    ciphertext = aes_cipher.encrypt(to_encrypt)
 
     # Write data out to package file
     # /package_dir/ is the mounted location inside the container - should not change
-    if alt_directory:
-        with open(f"{PACKED_EXPORT_PATH}/{package_name}", "wb") as fhandle:
-            fhandle.write(ciphertext)
-    else:
-        with open(f"{SECRETS_JSON_PATH}/{package_name}", "wb") as fhandle:
-            fhandle.write(ciphertext)
+    with open(f"{package_dir}/{package_name}", "wb") as fhandle:
+        fhandle.write(ciphertext)
 
     print("Feature packaged")
 
@@ -73,15 +73,15 @@ def main():
         required=True,
     )
     parser.add_argument(
-        "--alt-directory",
+        "--package-dir",
         help="Allows the file to pull the secrets from the local directory",
-        type=bool,
-        required=False,
+        type=str,
+        default="/package_dir",
     )
 
     args = parser.parse_args()
 
-    package(args.package_name, args.car_id, args.feature_number, args.alt_directoy)
+    package(args.package_name, args.car_id, args.feature_number, args.package_dir)
 
 
 if __name__ == "__main__":

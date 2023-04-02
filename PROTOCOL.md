@@ -38,13 +38,13 @@ Shown is only the data porting of a frame
 | Set Paired fob in Pairing Mode    | `0x4D`                                                            |                                                                           |
 | Set Unpaired Fob to Pair          | `0x50` > Hashed Pin (16 bytes)                                    | This call will have the unpaired fob start communication with paired fob  |
 | Get Secret from Paired            | `0x47` > Encrypted Pin (16 bytes)                                 |                                                                           |
+| Pairing Done                      | `0x48`                                                            |                                                                           |
 | Return Secret from Paired         | `0x52` > Car Unlock Secret (16 bytes)                             |                                                                           |
 | ACK                               | `0x41`                                                            |                                                                           |
 | NACK                              | `0xAA`                                                            |                                                                           |
 | Enable Feature                    | `0x45` > Encrypted Feature data (32 bytes)                        |                                                                           |
 | Unlock Car                        | `0x55` > Car Unlock Secret (16 bytes) > Feature Bitfield (1 byte) |                                                                           |
-| Unlocked Car Message              | _64-bits + (64-bits * feature_enabled)_                           | This is an EEPROM memory dump of a specific location as per the rules.    |
-|                                   |                                                                   |   The data format is not followed at all for this packet                  |
+| Unlocked Car Message              | _64-bits + (64-bits * feature_enabled)_                           | The data format is not followed at all for this packet                    |
 
 ## Pin
 The pin, a 6-digit string, will be taken and hashed with BLAKE2 which will be called "Hashed Pin".
@@ -55,9 +55,9 @@ When transmitting the pin between fobs, the pin will be further encrypted with a
 ## Feature Data
 The un-encrypted feature data is defined as follows:
 
-Car Unlock Secret (16 bytes) > Feature Number (1 byte, 0 to 3)
+Random Bytes (15 bytes) > Car Unlock Secret (16 bytes) > Feature Number (1 byte, 0 to 2)
 
-This data is padded to 32 bytes, then is encrypted with a Feature Encryption Key that is unique and stored per-fob
+This data is then encrypted with a Feature Encryption Key that is unique and stored per-fob
 
 ## Transactions
 The following section describes the different possible transactions
@@ -84,11 +84,12 @@ Here are the naming abreviation:
 5.  H -> U => `Establish Channel`
 6.  U -> H => `Establish Channel Return`
 7.  H -> U => `Set Unpaired Fob to Pair`
-8.  U -> P => `Establish Channel`
-9.  P -> U => `Establish Channel Return`
-10. U -> P => `Get Secret from Paired`
-11. P -> U => `Return Secret from Paired`
-12. U -> H => `ACK`
+8.  U -> H => `ACK`
+9.  U -> P => `Establish Channel`
+10. P -> U => `Establish Channel Return`
+11. U -> P => `Get Secret from Paired`
+12. P -> U => `Return Secret from Paired`
+13. U -> H => `Pairing Done`
 
 ## Enable Feature
 |---|     |---|
