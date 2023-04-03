@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -u
-
+import logging
 # @file pair_tool
 # @author Frederich Stine
 # @brief host tool for pairing a new key fob
@@ -14,6 +14,10 @@
 
 import socket
 import argparse
+import time
+import hashlib
+import common
+from cryptography.hazmat.primitives import hashes
 
 
 # @brief Function to send commands to pair
@@ -21,34 +25,47 @@ import argparse
 # @param unpairmed_fob_bridge, bridged serial connection to unpairmed fob
 # @param pairmed_fob_bridge, bridged serial connection to pairmed fob
 # @param pair_pin, pin used to pair a new fob
-def pair(unpaired_fob_bridge, paired_fob_bridge, pair_pin):
+def pair(unpaired_fob_bridge, paired_fob_bridge, pair_pin, socket_host):
 
     # Connect to both sockets for serial
     unpaired_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    unpaired_sock.connect(("ectf-net", int(unpaired_fob_bridge)))
+    unpaired_sock.connect((socket_host, int(unpaired_fob_bridge)))
 
     paired_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    paired_sock.connect(("ectf-net", int(paired_fob_bridge)))
+    paired_sock.connect((socket_host, int(paired_fob_bridge)))
 
-    # Send pair commands to both fobs
-    unpaired_sock.send(b"pair\n")
-    paired_sock.send(b"pair\n")
+    # TODO: Change for release
+    unpaired_sock.settimeout(60)
+    paired_sock.settimeout(60)
 
-    # Send pin to the paired fob
-    pair_pin_bytes = str.encode(pair_pin + "\n")
-    paired_sock.send(pair_pin_bytes)
+    paired_d = common.FobConnection(paired_sock)
+    unpaired_d = common.FobConnection(unpaired_sock)
 
-    # Set timeout for if pairing fails
-    unpaired_sock.settimeout(5)
-    # Try to receive data - if failed, pairing failed
     try:
-        pair_success = unpaired_sock.recv(6)
-        while len(pair_success) != 6:
-            pair_success += unpaired_sock.recv(6 - len(pair_success))
+        paired_d.ecdh_exchange()
+    except common.ReadException:
+        print("Issue while doing ECDH exchange")
+        return
+    # todo: add try except around blocks below
+    # Send pair commands to both fobs
+    paired_d.send_packet(0x4D)
+    paired_d.wait_for_ack()
 
-        print(pair_success)
-    except socket.timeout:
-        print("Failed to pair fob")
+    unpaired_d.ecdh_exchange()
+
+    pair_pin = hashlib.blake2s(pair_pin.encode('utf-8'), digest_size=16).digest()
+
+    unpaired_d.send_packet(0x50, pair_pin)
+    unpaired_d.wait_for_ack()
+
+    # Set timeout for device to do their thing
+    unpaired_sock.settimeout(5)
+    post_ack = unpaired_d.receive_frame()
+    if post_ack[0] != 0x48:
+        print("Did not successfully pair")
+        return
+
+    print("Paired successfully :)")
 
     return 0
 
@@ -75,9 +92,15 @@ def main():
         "--pair-pin", help="Program PIN", type=str, required=True,
     )
 
+    parser.add_argument(
+        "--socket-host", help="Program PIN", type=str, default="ectf-net",
+    )
+
+    logging.basicConfig(level=logging.DEBUG)
+
     args = parser.parse_args()
 
-    pair(args.unpaired_fob_bridge, args.paired_fob_bridge, args.pair_pin)
+    pair(args.unpaired_fob_bridge, args.paired_fob_bridge, args.pair_pin, args.socket_host)
 
 
 if __name__ == "__main__":

@@ -21,13 +21,19 @@
 #include "inc/hw_memmap.h"
 
 #define HOST_UART ((uint32_t)UART0_BASE)
+#define BOARD_UART ((uint32_t)UART1_BASE)
+#ifdef RUN_WITH_DEBUG_UART
+#define DEBUG_UART ((uint32_t)UART4_BASE)
+void uart_init_debug(void);
+#endif
 
 /**
  * @brief Initialize the UART interfaces.
  *
  * UART 0 is used to communicate with the door/fob.
  */
-void uart_init(void);
+void uart_init_host(void);
+void uart_init_board(void);
 
 /**
  * @brief Check if there are characters available on a UART interface.

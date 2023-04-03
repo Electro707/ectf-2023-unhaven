@@ -15,7 +15,6 @@
 import socket
 import argparse
 
-
 # @brief Function to monitor unlocking car
 # @param car_bridge, bridged serial connection to car
 def unlock(car_bridge):

@@ -15,7 +15,15 @@
 import json
 import argparse
 from pathlib import Path
+import secrets
 
+def bytearray_to_cstring(in_b: bytearray) -> str:
+    st = "{"
+    for c in in_b:
+        st += f"{c:d},"
+    st = st[:-1] + "}"
+
+    return st
 
 def main():
     parser = argparse.ArgumentParser()
@@ -27,25 +35,25 @@ def main():
     # Open the secret file if it exists
     if args.secret_file.exists():
         with open(args.secret_file, "r") as fp:
-            secrets = json.load(fp)
+            secrets_dict = json.load(fp)
     else:
-        secrets = {}
+        secrets_dict = {}
 
-    # Add dummy secret
-    car_secret = args.car_id + 1
-    secrets[str(args.car_id)] = car_secret
-
+    car_secret = secrets.token_bytes(16)
+    car_secret_str = bytearray_to_cstring(car_secret)
+    secrets_dict[str(args.car_id)+"_secret"] = list(car_secret)
+    secrets_dict[str(args.car_id)+"_secret_ccode"] = car_secret_str
+    
     # Save the secret file
     with open(args.secret_file, "w") as fp:
-        json.dump(secrets, fp, indent=4)
+        json.dump(secrets_dict, fp, indent=4)
 
     # Write to header file
     with open(args.header_file, "w") as fp:
         fp.write("#ifndef __CAR_SECRETS__\n")
         fp.write("#define __CAR_SECRETS__\n\n")
-        fp.write(f"#define CAR_SECRET {car_secret}\n\n")
+        fp.write(f"#define CAR_SECRET {car_secret_str}\n\n")
         fp.write(f'#define CAR_ID "{args.car_id}"\n\n')
-        fp.write('#define PASSWORD "unlock"\n\n')
         fp.write("#endif\n")
 
 

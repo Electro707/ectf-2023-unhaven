@@ -12,9 +12,7 @@
  * @copyright Copyright (c) 2023 The MITRE Corporation
  */
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <string.h>
+#include "firmware.h"
 
 #include "inc/hw_ints.h"
 #include "inc/hw_memmap.h"
@@ -26,68 +24,59 @@
 #include "driverlib/pin_map.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/timer.h"
+#include "driverlib/systick.h"
 
 #include "secrets.h"
 
-#include "board_link.h"
+#include "comms.h"
 #include "feature_list.h"
 #include "uart.h"
-
-// this will run if EXAMPLE_AES is defined in the Makefile (see line 54)
-#ifdef EXAMPLE_AES
-#include "aes.h"
-#endif
 
 #define FOB_STATE_PTR 0x3FC00
 #define FLASH_DATA_SIZE         \
   (sizeof(FLASH_DATA) % 4 == 0) \
       ? sizeof(FLASH_DATA)      \
       : sizeof(FLASH_DATA) + (4 - (sizeof(FLASH_DATA) % 4))
-#define FLASH_PAIRED 0x00
-#define FLASH_UNPAIRED 0xFF
+
+typedef enum{
+  PAIRED_STATE_PAIRED = 0xAB,
+  PAIRED_STATE_UNPAIRED = 0xFF,
+}PAIRED_STATE_e;
 
 /*** Structure definitions ***/
-// Defines a struct for the format of an enable message
-typedef struct
-{
-  uint8_t car_id[8];
-  uint8_t feature;
-} ENABLE_PACKET;
-
-// Defines a struct for the format of a pairing message
-typedef struct
-{
-  uint8_t car_id[8];
-  uint8_t password[8];
-  uint8_t pin[8];
-} PAIR_PACKET;
-
-// Defines a struct for the format of start message
-typedef struct
-{
-  uint8_t car_id[8];
-  uint8_t num_active;
-  uint8_t features[NUM_FEATURES];
-} FEATURE_DATA;
 
 // Defines a struct for storing the state in flash
 typedef struct
 {
-  uint8_t paired;
-  PAIR_PACKET pair_info;
-  FEATURE_DATA feature_info;
+  PAIRED_STATE_e paired;           // Wether we are paired or not
+  uint8_t encrypted_pin[16];   // The hashed pin
+  uint8_t car_secret[16];   // The car secret
+  uint8_t feature_bitfield;
 } FLASH_DATA;
+
+COMMAND_STATE_e message_state = COMMAND_STATE_RESET;
 
 /*** Function definitions ***/
 // Core functions - all functionality supported by fob
 void saveFobState(FLASH_DATA *flash_data);
-void pairFob(FLASH_DATA *fob_state_ram);
-void unlockCar(FLASH_DATA *fob_state_ram);
-void enableFeature(FLASH_DATA *fob_state_ram);
-void startCar(FLASH_DATA *fob_state_ram);
+void init_other_aes_context(void);
 
-// Helper functions - receive ack message
-uint8_t receiveAck();
+int8_t process_received_new_feature(uint8_t *data);
+uint8_t get_if_paired(void);
+
+void startUnlockCar(void);
+static void sendCarUnlockToken(void);
+
+uint8_t unpaired_received_pin[16];
+
+struct AES_ctx feature_unlock_aes;
+static uint8_t feature_unlock_iv[16];
+struct AES_ctx pin_unlock_aes;
+
+static const uint8_t pre_programmed_pin[16] = PAIR_PIN;
+static const uint8_t pre_programmer_car_secret[16] = CAR_SECRET;
+
+FLASH_DATA fob_state_ram;
 
 /**
  * @brief Main function for the fob example
@@ -99,71 +88,52 @@ uint8_t receiveAck();
  */
 int main(void)
 {
-  FLASH_DATA fob_state_ram;
   FLASH_DATA *fob_state_flash = (FLASH_DATA *)FOB_STATE_PTR;
+
+  SysTickPeriodSet(16777216);
+  SysTickEnable();
 
 // If paired fob, initialize the system information
 #if PAIRED == 1
-  if (fob_state_flash->paired == FLASH_UNPAIRED)
+  if (fob_state_flash->paired == PAIRED_STATE_UNPAIRED)
   {
-    strcpy((char *)(fob_state_ram.pair_info.password), PASSWORD);
-    strcpy((char *)(fob_state_ram.pair_info.pin), PAIR_PIN);
-    strcpy((char *)(fob_state_ram.pair_info.car_id), CAR_ID);
-    strcpy((char *)(fob_state_ram.feature_info.car_id), CAR_ID);
-    fob_state_ram.paired = FLASH_PAIRED;
-
+    memcpy(fob_state_ram.encrypted_pin, pre_programmed_pin, 16);
+    memcpy(fob_state_ram.car_secret, pre_programmer_car_secret, 16);
+    fob_state_ram.paired = PAIRED_STATE_PAIRED;
     saveFobState(&fob_state_ram);
   }
 #endif
 
-  if (fob_state_flash->paired == FLASH_PAIRED)
-  {
+  if (fob_state_flash->paired == PAIRED_STATE_PAIRED){
     memcpy(&fob_state_ram, fob_state_flash, FLASH_DATA_SIZE);
   }
 
   // This will run on first boot to initialize features
-  if (fob_state_ram.feature_info.num_active == 0xFF)
+  if (fob_state_ram.feature_bitfield == 0xFF)
   {
-    fob_state_ram.feature_info.num_active = 0;
+    fob_state_ram.feature_bitfield = 0;
     saveFobState(&fob_state_ram);
   }
 
-  // Initialize UART
-  uart_init();
+  // Ensure EEPROM peripheral is enabled
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);
+  EEPROMInit();
 
-#ifdef EXAMPLE_AES
-  // -------------------------------------------------------------------------
-  // example encryption using tiny-AES-c
-  // -------------------------------------------------------------------------
-  struct AES_ctx ctx;
-  uint8_t key[16] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
-                     0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf};
-  uint8_t plaintext[16] = "0123456789abcdef";
-
-  // initialize context
-  AES_init_ctx(&ctx, key);
-
-  // encrypt buffer (encryption happens in place)
-  AES_ECB_encrypt(&ctx, plaintext);
-
-  // decrypt buffer (decryption happens in place)
-  AES_ECB_decrypt(&ctx, plaintext);
-  // -------------------------------------------------------------------------
-  // end example
-  // -------------------------------------------------------------------------
-#endif
+  init_other_aes_context();
 
   // Initialize board link UART
-  setup_board_link();
+  setup_uart_links();
+
+#ifdef RUN_WITH_DEBUG_UART
+  uart_init_debug();
+#endif
 
   // Setup SW1
   GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);
   GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_4MA,
                    GPIO_PIN_TYPE_STD_WPU);
-
-  // Declare a buffer for reading and writing to UART
-  uint8_t uart_buffer[10];
-  uint8_t uart_buffer_index = 0;
+  
+  uart_debug_strln("Started Program!3\0");
 
   uint8_t previous_sw_state = GPIO_PIN_4;
   uint8_t debounce_sw_state = GPIO_PIN_4;
@@ -172,177 +142,229 @@ int main(void)
   // Infinite loop for polling UART
   while (true)
   {
+    // Non blocking UART polling
+    if (uart_avail(HOST_UART)){
+      receive_host_uart();
+    }
 
     // Non blocking UART polling
-    if (uart_avail(HOST_UART))
-    {
-      uint8_t uart_char = (uint8_t)uart_readb(HOST_UART);
-
-      if ((uart_char != '\r') && (uart_char != '\n') && (uart_char != '\0') &&
-          (uart_char != 0xD))
-      {
-        uart_buffer[uart_buffer_index] = uart_char;
-        uart_buffer_index++;
-      }
-      else
-      {
-        uart_buffer[uart_buffer_index] = 0x00;
-        uart_buffer_index = 0;
-
-        if (!(strcmp((char *)uart_buffer, "enable")))
-        {
-          enableFeature(&fob_state_ram);
-        }
-        else if (!(strcmp((char *)uart_buffer, "pair")))
-        {
-          pairFob(&fob_state_ram);
-        }
-      }
+    if (uart_avail(BOARD_UART)){
+      receive_board_uart();
     }
 
     current_sw_state = GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_4);
-    if ((current_sw_state != previous_sw_state) && (current_sw_state == 0))
-    {
+    if ((current_sw_state != previous_sw_state) && (current_sw_state == 0)){
       // Debounce switch
       for (int i = 0; i < 10000; i++)
         ;
       debounce_sw_state = GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_4);
       if (debounce_sw_state == current_sw_state)
       {
-        unlockCar(&fob_state_ram);
-        if (receiveAck())
-        {
-          startCar(&fob_state_ram);
-        }
+        startUnlockCar();
       }
     }
     previous_sw_state = current_sw_state;
   }
 }
 
-/**
- * @brief Function that carries out pairing of the fob
- *
- * @param fob_state_ram pointer to the current fob state in ram
- */
-void pairFob(FLASH_DATA *fob_state_ram)
-{
-  MESSAGE_PACKET message;
-  // Start pairing transaction - fob is already paired
-  if (fob_state_ram->paired == FLASH_PAIRED)
-  {
-    int16_t bytes_read;
-    uint8_t uart_buffer[8];
-    uart_write(HOST_UART, (uint8_t *)"Enter pin: ", 11);
-    bytes_read = uart_readline(HOST_UART, uart_buffer);
+void init_other_aes_context(void){
+  uint8_t eeprom_stuff[24];
 
-    if (bytes_read == 6)
-    {
-      // If the pin is correct
-      if (!(strcmp((char *)uart_buffer,
-                   (char *)fob_state_ram->pair_info.pin)))
-      {
-        // Pair the new key by sending a PAIR_PACKET structure
-        // with required information to unlock door
-        message.message_len = sizeof(PAIR_PACKET);
-        message.magic = PAIR_MAGIC;
-        message.buffer = (uint8_t *)&fob_state_ram->pair_info;
-        send_board_message(&message);
+  EEPROMRead((uint32_t *)eeprom_stuff, 0x00, 24);
+  EEPROMRead((uint32_t *)feature_unlock_iv, 0x20, 16);
+  AES_init_ctx_iv(&feature_unlock_aes, eeprom_stuff, feature_unlock_iv);
+
+  EEPROMRead((uint32_t *)eeprom_stuff, 0x40, 24);
+  AES_init_ctx(&pin_unlock_aes, eeprom_stuff);
+}
+
+/**
+ * Function to process host message only from received data
+ */
+void process_host_uart(void){
+  uint8_t stat;
+  DATA_TRANSFER_T *host = &host_comms;
+
+  switch(host->buffer[0]){
+    // If we are a paired fob and was just told to be in pairing mode
+    case COMMAND_BYTE_PAIRED_IN_PAIRING_MODE:
+      if(get_if_paired() == 1){
+        // TODO: Add pairing mode state
+        returnAck(host);
       }
-    }
-  }
-
-  // Start pairing transaction - fob is not paired
-  else
-  {
-    message.buffer = (uint8_t *)&fob_state_ram->pair_info;
-    receive_board_message_by_type(&message, PAIR_MAGIC);
-    fob_state_ram->paired = FLASH_PAIRED;
-    strcpy((char *)fob_state_ram->feature_info.car_id,
-           (char *)fob_state_ram->pair_info.car_id);
-
-    uart_write(HOST_UART, (uint8_t *)"Paired", 6);
-
-    saveFobState(fob_state_ram);
-  }
-}
-
-/**
- * @brief Function that handles enabling a new feature on the fob
- *
- * @param fob_state_ram pointer to the current fob state in ram
- */
-void enableFeature(FLASH_DATA *fob_state_ram)
-{
-  if (fob_state_ram->paired == FLASH_PAIRED)
-  {
-    uint8_t uart_buffer[20];
-    uart_readline(HOST_UART, uart_buffer);
-
-    ENABLE_PACKET *enable_message = (ENABLE_PACKET *)uart_buffer;
-    if (strcmp((char *)fob_state_ram->pair_info.car_id,
-               (char *)enable_message->car_id))
-    {
-      return;
-    }
-
-    // Feature list full
-    if (fob_state_ram->feature_info.num_active == NUM_FEATURES)
-    {
-      return;
-    }
-
-    // Search for feature in list
-    for (int i = 0; i < fob_state_ram->feature_info.num_active; i++)
-    {
-      if (fob_state_ram->feature_info.features[i] == enable_message->feature)
-      {
-        return;
+      else{
+        returnNack(host);
       }
-    }
-
-    fob_state_ram->feature_info
-        .features[fob_state_ram->feature_info.num_active] =
-        enable_message->feature;
-    fob_state_ram->feature_info.num_active++;
-
-    saveFobState(fob_state_ram);
-    uart_write(HOST_UART, (uint8_t *)"Enabled", 7);
+      break;
+    case COMMAND_BYTE_UNPARED_IN_PARING_MODE: // The host sent the paring command with pin, so we must be the unpaired fob
+      // TODO: Check if we are the unpaired fob
+      if(get_if_paired() == 0){
+        // TODO: Check for received secret
+        // Copy over the hashed pin to confirm with paired fob
+        memcpy(unpaired_received_pin, &host->buffer[1], 16);
+        // Create a secure connection with a paired fob and wait for received message
+        // generate_ecdh_local_keys(&board_comms);
+        // generate_standard_message(&board_comms, COMMAND_BYTE_NEW_MESSAGE_ECDH);    // Start transaction with the fob
+        create_new_secure_comms(&board_comms);
+        // board_comms.exchanged_ecdh == true;
+        // TODO: Move the stuff above in a function in comms.c
+        message_state = COMMAND_STATE_WAITING_FOR_PAIRED_ECDH;
+        returnAck(host);
+      }
+      else{
+        returnNack(host);
+      }
+      break;
+    case COMMAND_BYTE_ENABLE_FEATURE:
+      // Sanity check to make sure we are paired
+      if(get_if_paired() != 1){
+        returnNack(host);
+        break;
+      }
+      stat = process_received_new_feature(host->buffer+1);
+      if(stat == 0){
+        returnAck(host);
+        host->exchanged_ecdh = false;
+        message_state = COMMAND_STATE_RESET;
+      }
+      else{
+        returnNack(host);
+      }
+      break;
+    default:
+      returnNack(host);
+      break;
   }
 }
 
-/**
- * @brief Function that handles the fob unlocking a car
- *
- * @param fob_state_ram pointer to the current fob state in ram
- */
-void unlockCar(FLASH_DATA *fob_state_ram)
-{
-  if (fob_state_ram->paired == FLASH_PAIRED)
-  {
-    MESSAGE_PACKET message;
-    message.message_len = 6;
-    message.magic = UNLOCK_MAGIC;
-    message.buffer = fob_state_ram->pair_info.password;
-    send_board_message(&message);
+void process_board_uart(void){
+  DATA_TRANSFER_T *host = &board_comms;
+
+  switch(host->buffer[0]){
+    case COMMAND_BYTE_RETURN_OWN_ECDH:
+      // This can happen either because we are a unpaired fob and just established comms with paired fob,
+      // Or we are a paired fob trying to communicate with a car
+      // TODO: Add general check around message_state
+      if(host->buffer_index != 1+ECDH_PUBLIC_KEY_BYTES){
+        // Return a NACK to the host as well if we fail ECDH and we are pairing
+        if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
+          returnNack(&host_comms);
+        }
+        returnNack(host);
+        break;
+      }
+      host->exchanged_ecdh = true;
+      setup_secure_aes(host, &host->buffer[1]);
+      // TODO: Initialize the internal AES context with generated key
+      if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
+        // We send out our hashed pairing key in order to get the secret
+        // TODO: Add check
+        AES_ECB_encrypt(&pin_unlock_aes, unpaired_received_pin);
+        generate_send_message(host, COMMAND_BYTE_GET_SECRET, unpaired_received_pin, 16);
+        message_state = COMMAND_STATE_WAITING_FOR_SECRET;
+      }
+      else if(message_state == COMMAND_STATE_WAITING_FOR_CAR_ECDH){
+        sendCarUnlockToken();
+        // For now the fob does nothing about any return statement, so do nothing...
+        host->exchanged_ecdh = false;
+        message_state = COMMAND_STATE_RESET;
+      }
+      else{
+        returnNack(host);
+        break;
+      }
+      break;
+    case COMMAND_BYTE_GET_SECRET:
+      // If we are are a paired pin and the unpaired pin wants the secrets
+      // Do a sanity check to determine if we are the right devices
+      if(get_if_paired() != 1){
+        returnNack(host);
+        break;
+      }
+      if(memcmp(fob_state_ram.encrypted_pin, host->buffer+1, 16) == 0){
+        // We now need to send the secrets to the unpaired fob
+        generate_send_message(host, COMMAND_BYTE_RETURN_SECRET, fob_state_ram.car_secret, 16);
+      }
+      else{
+        returnNack(host);
+      }
+      break;
+    case COMMAND_BYTE_RETURN_SECRET:
+      // If we are the unpaired fob and we just got our secret, yay
+      if(get_if_paired() != 0){
+        // We send a NACK back to the host
+        returnNack(&host_comms);
+        break;
+      }
+      memcpy(fob_state_ram.encrypted_pin, unpaired_received_pin, 16);
+      memcpy(fob_state_ram.car_secret, &host->buffer[1], 16);
+      fob_state_ram.paired = PAIRED_STATE_PAIRED;
+      saveFobState(&fob_state_ram);
+      // Send a pairing done to the host
+      generate_send_message(&host_comms, COMMAND_BYTE_PAIRING_DONE, NULL, 0);
+      message_state = COMMAND_STATE_RESET;
+      host->exchanged_ecdh = false;
+      host_comms.exchanged_ecdh = false;
+      break;
+    case COMMAND_BYTE_NACK:
+      // I mean there isn't much to do here, other than reset
+      host->exchanged_ecdh = false;
+      message_state = COMMAND_STATE_RESET;
+      // If we got a NACK from the other paired fob, let the host know about it
+      if(message_state == COMMAND_STATE_WAITING_FOR_SECRET){
+        returnNack(&host_comms);
+      }
+      break;
+    default:
+      // TODO: Do something, probably
+      break;
   }
 }
 
-/**
- * @brief Function that handles the fob starting a car
- *
- * @param fob_state_ram pointer to the current fob state in ram
- */
-void startCar(FLASH_DATA *fob_state_ram)
-{
-  if (fob_state_ram->paired == FLASH_PAIRED)
-  {
-    MESSAGE_PACKET message;
-    message.magic = START_MAGIC;
-    message.message_len = sizeof(FEATURE_DATA);
-    message.buffer = (uint8_t *)&fob_state_ram->feature_info;
-    send_board_message(&message);
+int8_t process_received_new_feature(uint8_t *data){
+  uint8_t feature_number;
+
+  AES_ctx_set_iv(&feature_unlock_aes, feature_unlock_iv);
+  AES_CBC_decrypt_buffer(&feature_unlock_aes, data, 32);
+  if(memcmp(data+15, fob_state_ram.car_secret, 16) != 0){
+    return -1;
   }
+  feature_number = *(data+16+15);
+  if(feature_number >= 3){
+    return -1;
+  }
+  fob_state_ram.feature_bitfield |= (1 << feature_number);
+  saveFobState(&fob_state_ram);
+  return 0;
+}
+
+/**
+ * Function that gets called when a button is pressed, to mainly unlock the car
+*/
+void startUnlockCar(void){
+  if(get_if_paired() != 1){
+    uart_debug_strln("Not Paired");
+    return;
+  }
+  if(message_state != COMMAND_STATE_RESET){
+    uart_debug_strln("Not in comm reset");
+    return;
+  }
+  // Start ECDH with car
+  uart_debug_strln("Unlocking Car!!");
+  create_new_secure_comms(&board_comms);
+  message_state = COMMAND_STATE_WAITING_FOR_CAR_ECDH;
+}
+
+/**
+ * This gets called when the car returns the ECDH exchange
+*/
+static void sendCarUnlockToken(void){
+  // Let's pack the car secret and feature bits
+  uint8_t to_send[16+1];
+  memcpy(to_send, fob_state_ram.car_secret, 16);
+  to_send[16] = fob_state_ram.feature_bitfield;
+  generate_send_message(&board_comms, COMMAND_BYTE_TO_CAR_UNLOCK, to_send, 17);
 }
 
 /**
@@ -356,18 +378,6 @@ void saveFobState(FLASH_DATA *flash_data)
   FlashProgram((uint32_t *)flash_data, FOB_STATE_PTR, FLASH_DATA_SIZE);
 }
 
-/**
- * @brief Function that receives an ack and returns whether ack was
- * success/failure
- *
- * @return uint8_t Ack success/failure
- */
-uint8_t receiveAck()
-{
-  MESSAGE_PACKET message;
-  uint8_t buffer[255];
-  message.buffer = buffer;
-  receive_board_message_by_type(&message, ACK_MAGIC);
-
-  return message.buffer[0];
+uint8_t get_if_paired(void){
+  return fob_state_ram.paired == PAIRED_STATE_PAIRED;
 }

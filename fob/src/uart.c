@@ -32,7 +32,7 @@
  *
  * UART 0 is used to communicate with the host computer.
  */
-void uart_init(void) {
+void uart_init_host(void) {
   // Configure the UART peripherals used in this example
   // RCGC   Run Mode Clock Gating
   SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0); // UART 0 for host interface
@@ -56,9 +56,61 @@ void uart_init(void) {
 
   // Configure the UART for 115,200, 8-N-1 operation.
   UARTConfigSetExpClk(
-      UART0_BASE, SysCtlClockGet(), 115200,
+      HOST_UART, SysCtlClockGet(), 115200,
+      (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+
+  // Clear the UART buffer if there's any crap in there
+  while (UARTCharsAvail(HOST_UART)) {
+    UARTCharGet(HOST_UART);
+  }
+}
+
+/**
+* UART 1 is connected to PB0 and PB1
+*/
+void uart_init_board(void){
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+
+  GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+  GPIOPinConfigure(GPIO_PB0_U1RX);
+  GPIOPinConfigure(GPIO_PB1_U1TX);
+
+  GPIOPadConfigSet(GPIO_PORTB_BASE, GPIO_PIN_1 | GPIO_PIN_0, GPIO_STRENGTH_8MA, GPIO_PIN_TYPE_STD_WPU);
+
+  // Configure the UART for 115,200, 8-N-1 operation.
+  UARTConfigSetExpClk(
+      BOARD_UART, SysCtlClockGet(), 115200,
+      (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+
+  // Clear the UART buffer if there's any crap in there
+  while (UARTCharsAvail(BOARD_UART)) {
+    UARTCharGet(BOARD_UART);
+  }
+}
+
+#ifdef RUN_WITH_DEBUG_UART
+/**
+ * Debug UART (used for debugging, duh!)
+ *
+ * Connected to PD6 and PD7
+*/
+void uart_init_debug(void){
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_UART4);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
+
+  GPIOPinTypeUART(GPIO_PORTC_BASE, GPIO_PIN_4 | GPIO_PIN_5);
+
+  GPIOPinConfigure(GPIO_PC4_U4RX);
+  GPIOPinConfigure(GPIO_PC5_U4TX);
+
+  // Configure the UART for 115,200, 8-N-1 operation.
+  UARTConfigSetExpClk(
+      DEBUG_UART, SysCtlClockGet(), 115200,
       (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
 }
+#endif
 
 /**
  * @brief Check if there are characters available on a UART interface.

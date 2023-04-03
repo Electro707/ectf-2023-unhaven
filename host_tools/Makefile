@@ -14,3 +14,4 @@ all:
 	cp pair_tool ${TOOLS_OUT_DIR}/pair_tool
 	cp enable_tool ${TOOLS_OUT_DIR}/enable_tool
 	cp package_tool ${TOOLS_OUT_DIR}/package_tool
+	cp common.py ${TOOLS_OUT_DIR}/common.py

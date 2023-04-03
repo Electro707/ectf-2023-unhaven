@@ -35,7 +35,7 @@ include ${TIVA_ROOT}/makedefs
 ############### START car customization ################
 
 # Optimizations
-CFLAGS+=-Os
+CFLAGS+=-O0
 
 # check that parameters are defined
 check_defined = \
@@ -50,7 +50,7 @@ car_arg_check:
 	$(call check_defined, CAR_ID SECRETS_DIR BIN_PATH ELF_PATH EEPROM_PATH)
 
 gen_secret:
-	python3 gen_secret.py --car-id ${CAR_ID} --secret-file ${SECRETS_DIR}/car_secrets.json --header-file inc/secrets.h
+	python3 gen_secret.py --car-id ${CAR_ID} --secret-file ${SECRETS_DIR}/secrets.json --header-file inc/secrets.h
 
 ################ END car customization ################
 #######################################################
@@ -66,31 +66,31 @@ car: ${COMPILER}/firmware.axf
 car: copy_artifacts
 
 
-################ start crypto example ################
-# example AES rules to build in tiny-AES-c: https://github.com/kokke/tiny-AES-c
-# make sure submodule has been pulled (run `git submodule update --init`)
-# uncomment next line to activate
-# EXAMPLE_AES=foo
-ifdef EXAMPLE_AES
+#######################################################
+# AES Library
+#######################################################
 # path to crypto library
 CRYPTOPATH=${ROOT}/lib/tiny-AES-c
-
 # add path to crypto source files to source path
 VPATH+=${CRYPTOPATH}
-
 # add crypto library to includes path
 IPATH+=${CRYPTOPATH}
-
 # add crypto object file to includes path
 # LDFLAGS+=${COMPILER}/aes.o
-
-# add compiler flag to enable example AES code 
-CFLAGS+=-DEXAMPLE_AES
-
 # add rule to build crypto library
 ${COMPILER}/firmware.axf: ${COMPILER}/aes.o
-endif
-################ end crypto example ################
+
+#######################################################
+# ECDH Library
+#######################################################
+# path to crypto library
+ECDHPATH=${ROOT}/lib/micro-ecc
+VPATH+=${ECDHPATH}
+IPATH+=${ECDHPATH}
+${COMPILER}/firmware.axf: ${COMPILER}/uECC.o
+
+CFLAGSgcc+=-fomit-frame-pointer
+CFLAGS+=-DuECC_OPTIMIZATION_LEVEL=3 -DuECC_PLATFORM=uECC_arm_thumb2
 
 
 # build libraries
@@ -115,7 +115,8 @@ ${COMPILER}:
 # for each source file that needs to be compiled besides the file that defines `main`
 
 ${COMPILER}/firmware.axf: ${COMPILER}/uart.o
-${COMPILER}/firmware.axf: ${COMPILER}/board_link.o
+${COMPILER}/firmware.axf: ${COMPILER}/comms.o
+${COMPILER}/firmware.axf: ${COMPILER}/unewhaven_crc.o
 ${COMPILER}/firmware.axf: ${COMPILER}/firmware.o
 ${COMPILER}/firmware.axf: ${COMPILER}/startup_${COMPILER}.o
 ${COMPILER}/firmware.axf: ${TIVA_ROOT}/driverlib/${COMPILER}/libdriver.a
@@ -123,7 +124,7 @@ ${COMPILER}/firmware.axf: ${TIVA_ROOT}/driverlib/${COMPILER}/libdriver.a
 copy_artifacts:
 	cp ${COMPILER}/firmware.bin ${BIN_PATH}
 	cp ${COMPILER}/firmware.axf ${ELF_PATH}
-	cp ${SECRETS_DIR}/global_secrets.txt ${EEPROM_PATH}
+	cp ${SECRETS_DIR}/global_eeprom.dat ${EEPROM_PATH}
 
 SCATTERgcc_firmware=${TIVA_ROOT}/firmware.ld
 ENTRY_firmware=Firmware_Startup

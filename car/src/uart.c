@@ -32,7 +32,7 @@
  *
  * UART 0 is used to communicate with the host computer.
  */
-void uart_init(void) {
+void uart_init_host(void) {
   // Configure the UART peripherals used in this example
   // RCGC   Run Mode Clock Gating
   SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0); // UART 0 for host interface
@@ -56,8 +56,35 @@ void uart_init(void) {
 
   // Configure the UART for 115,200, 8-N-1 operation.
   UARTConfigSetExpClk(
-      UART0_BASE, SysCtlClockGet(), 115200,
+      HOST_UART, SysCtlClockGet(), 115200,
       (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+
+  // Clear the UART buffer if there's any crap in there
+  while (UARTCharsAvail(HOST_UART)) {
+    UARTCharGet(HOST_UART);
+  }
+}
+
+void uart_init_board(void){
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+
+  GPIOPinConfigure(GPIO_PB0_U1RX);
+  GPIOPinConfigure(GPIO_PB1_U1TX);
+
+  GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+  GPIOPadConfigSet(GPIO_PORTB_BASE, GPIO_PIN_1 | GPIO_PIN_0, GPIO_STRENGTH_8MA, GPIO_PIN_TYPE_STD_WPU);
+
+  // Configure the UART for 115,200, 8-N-1 operation.
+  UARTConfigSetExpClk(
+      BOARD_UART, SysCtlClockGet(), 115200,
+      (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+
+  // Clear the UART buffer if there's any crap in there
+  while (UARTCharsAvail(BOARD_UART)) {
+    UARTCharGet(BOARD_UART);
+  }
 }
 
 /**
@@ -112,7 +139,6 @@ uint32_t uart_readline(uint32_t uart, uint8_t *buf) {
       buf[read] = c;
       read++;
     }
-
   } while ((c != '\n') && (c != 0xD));
 
   buf[read] = '\0';

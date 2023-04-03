@@ -15,7 +15,16 @@
 import json
 import argparse
 from pathlib import Path
+import hashlib 
+from Crypto.Cipher import AES
 
+def bytearray_to_cstring(in_b: bytearray) -> str:
+    st = "{"
+    for c in in_b:
+        st += f"{c:d},"
+    st = st[:-1] + "}"
+
+    return st
 
 def main():
     parser = argparse.ArgumentParser()
@@ -29,18 +38,25 @@ def main():
     if args.paired:
         # Open the secret file, get the car's secret
         with open(args.secret_file, "r") as fp:
-            secrets = json.load(fp)
-            car_secret = secrets[str(args.car_id)]
+            secrets_dict = json.load(fp)
+            car_secret = secrets_dict[str(args.car_id)+"_secret_ccode"]
+            pin_encrypt = bytearray(secrets_dict["pin_encrypt_key"])
+
+        hash_pin = hashlib.blake2s(args.pair_pin.encode('utf-8'), digest_size=16).digest()
+        aes_cipher = AES.new(pin_encrypt, AES.MODE_ECB)
+        encrypted_pin = aes_cipher.encrypt(hash_pin)
+
+        encrypted_pin_ccode = bytearray_to_cstring(encrypted_pin)
 
         # Write to header file
         with open(args.header_file, "w") as fp:
             fp.write("#ifndef __FOB_SECRETS__\n")
             fp.write("#define __FOB_SECRETS__\n\n")
             fp.write("#define PAIRED 1\n")
-            fp.write(f'#define PAIR_PIN "{args.pair_pin}"\n')
-            fp.write(f'#define CAR_ID "{args.car_id}"\n')
-            fp.write(f'#define CAR_SECRET "{car_secret}"\n\n')
-            fp.write('#define PASSWORD "unlock"\n\n')
+            fp.write(f'#define PAIR_PIN {encrypted_pin_ccode}\n')
+            fp.write(f'#define CAR_ID {args.car_id}\n')
+            # NOTE: This car secret is already in a nice string format
+            fp.write(f'#define CAR_SECRET {car_secret}\n\n')
             fp.write("#endif\n")
     else:
         # Write to header file
@@ -48,10 +64,9 @@ def main():
             fp.write("#ifndef __FOB_SECRETS__\n")
             fp.write("#define __FOB_SECRETS__\n\n")
             fp.write("#define PAIRED 0\n")
-            fp.write('#define PAIR_PIN "000000"\n')
+            fp.write('#define PAIR_PIN {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}\n')
             fp.write('#define CAR_ID "000000"\n')
             fp.write('#define CAR_SECRET "000000"\n\n')
-            fp.write('#define PASSWORD "unlock"\n\n')
             fp.write("#endif\n")
 
 

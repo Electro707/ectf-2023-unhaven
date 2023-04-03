@@ -14,38 +14,34 @@
 
 import socket
 import argparse
-
+import logging
+import common
 
 # @brief Function to send commands to enable a feature on a fob
 # @param fob_bridge, bridged serial connection to fob
 # @param package_name, name of the package file to read from
-def enable(fob_bridge, package_name):
+def enable(fob_bridge, package_name, socket_host, package_dir):
 
     # Connect fob socket to serial
     fob_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    fob_sock.connect(("ectf-net", int(fob_bridge)))
+    fob_sock.connect((socket_host, int(fob_bridge)))
 
-    # Send enable command to fob
-    fob_sock.send(b"enable\n")
+    fob_sock.settimeout(60)
+
+    fob_d = common.FobConnection(fob_sock)
+
+    fob_d.ecdh_exchange()
 
     # Open and read binary data from package file
-    with open(f"/package_dir/{package_name}", "rb") as fhandle:
-        message = fhandle.read()
+    with open(f"{package_dir}/{package_name}", "rb") as fhandle:
+        encrypted_feature = fhandle.read()
 
     # Send package to fob
-    fob_sock.send(message)
+    fob_d.send_packet(0x45, encrypted_feature)
 
-    # Set timeout for if enable fails
-    fob_sock.settimeout(5)
-    # Try to receive data - if failed, enabling failed
-    try:
-        enable_success = fob_sock.recv(7)
-        while len(enable_success) != 7:
-            enable_success += fob_sock.recv(7 - len(enable_success))
+    fob_d.wait_for_ack()
 
-        print(enable_success)
-    except socket.timeout:
-        print("Failed to enable feature")
+    print("Successfully did feature thing")
 
     return 0
 
@@ -63,9 +59,21 @@ def main():
         "--package-name", help="Name of the package file", type=str, required=True,
     )
 
+    parser.add_argument(
+        "--socket-host", help="Socket Host", type=str, default="ectf-net",
+    )
+    parser.add_argument(
+        "--package-dir",
+        help="Allows the file to pull the secrets from the local directory",
+        type=str,
+        default="/package_dir",
+    )
+
+    logging.basicConfig(level=logging.DEBUG)
+
     args = parser.parse_args()
 
-    enable(args.fob_bridge, args.package_name)
+    enable(args.fob_bridge, args.package_name, args.socket_host, args.package_dir)
 
 
 if __name__ == "__main__":
