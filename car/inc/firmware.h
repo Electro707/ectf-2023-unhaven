@@ -1,4 +1,4 @@
-#ifndef FIRMAWRE_H
+#ifndef FIRMWARE_H
 #define FIRMWARE_H
 
 void process_board_uart(void);

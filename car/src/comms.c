@@ -76,12 +76,9 @@ void receive_board_uart(void){
   switch(host->state){
     case RECEIVE_PACKET_STATE_RESET:
       host->packet_size = uart_char;
-      if(host->packet_size == 0){
+      if(host->packet_size < 3 || host->packet_size >= MAXIMUM_PACKET_SIZE){
         return;
       }
-      // if((host->packet_size % AES_BLOCKLEN) != 0){
-      //   return;
-      // }
       host->crc = 0;
       host->buffer_index = 0;
       host->state = RECEIVE_PACKET_STATE_DATA;

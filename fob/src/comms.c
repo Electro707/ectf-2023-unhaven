@@ -140,7 +140,7 @@ void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host){
  * underlaying communication protocol is the same.
 */
 void process_received_packet(DATA_TRANSFER_T *host){
-  if(host->buffer_index < 3 || host->buffer_index > 80){  // Smallest message must include at least ony byte and CRC
+  if(host->buffer_index < 3 || host->buffer_index > MAXIMUM_DATA_BUFFER){  // Smallest message must include at least ony byte and CRC
     // TODO: Raise error: too short
     return;
   }
