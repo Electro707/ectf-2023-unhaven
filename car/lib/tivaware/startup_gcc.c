@@ -63,7 +63,7 @@ extern int main(void);
 // Reserve space for the system stack.
 //
 //*****************************************************************************
-static volatile uint32_t pui32Stack[64];
+static volatile uint32_t pui32Stack[512];
 
 
 //*****************************************************************************

@@ -37,7 +37,7 @@ include ${TIVA_ROOT}/makedefs
 
 
 # Optimizations
-CFLAGS+=-O0
+CFLAGS+=-O2
 
 # check that parameters are defined
 check_defined = \
@@ -108,6 +108,12 @@ IPATH+=${ECDHPATH}
 ${COMPILER}/firmware.axf: ${COMPILER}/uECC.o
 CFLAGSgcc+=-fomit-frame-pointer
 CFLAGS+=-DuECC_OPTIMIZATION_LEVEL=3 -DuECC_PLATFORM=uECC_arm_thumb2
+
+# path to hash library
+BLAKE2PATH=${ROOT}/lib/blake2
+VPATH+=${BLAKE2PATH}
+IPATH+=${BLAKE2PATH}
+${COMPILER}/firmware.axf: ${COMPILER}/blake2s-ref.o
 
 # build libraries
 ${TIVA_ROOT}/driverlib/${COMPILER}/libdriver.a:

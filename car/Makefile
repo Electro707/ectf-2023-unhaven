@@ -35,7 +35,7 @@ include ${TIVA_ROOT}/makedefs
 ############### START car customization ################
 
 # Optimizations
-CFLAGS+=-O0
+CFLAGS+=-O2
 
 # check that parameters are defined
 check_defined = \
@@ -88,6 +88,12 @@ ECDHPATH=${ROOT}/lib/micro-ecc
 VPATH+=${ECDHPATH}
 IPATH+=${ECDHPATH}
 ${COMPILER}/firmware.axf: ${COMPILER}/uECC.o
+
+# path to hash library
+BLAKE2PATH=${ROOT}/lib/blake2
+VPATH+=${BLAKE2PATH}
+IPATH+=${BLAKE2PATH}
+${COMPILER}/firmware.axf: ${COMPILER}/blake2s-ref.o
 
 CFLAGSgcc+=-fomit-frame-pointer
 CFLAGS+=-DuECC_OPTIMIZATION_LEVEL=3 -DuECC_PLATFORM=uECC_arm_thumb2
