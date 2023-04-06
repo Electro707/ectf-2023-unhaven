@@ -68,20 +68,15 @@ Here are the naming abreviation:
 - H -> Host
 
 ### Pair Fob Process
+```
 |---|     |---|
-
 |   |<--->| P |<---\
-
 |   |     |---|    |
-
 | H |              |
-
 |   |     |---|    |
-
 |   |<--->| U |<---/
-
 |---|     |---|
-
+```
 #### Packet Sequence
 1.  H -> P => `Establish Channel`
 2.  P -> H => `Establish Channel Return`
@@ -98,12 +93,11 @@ Here are the naming abreviation:
 13. U -> H => `Pairing Done`
 
 ## Enable Feature
+```
 |---|     |---|
-
 | H |<--->| P |
-
 |---|     |---|
-
+```
 #### Packet Sequence
 1.  H -> P => `Establish Channel`
 2.  P -> H => `Establish Channel Return`
@@ -111,13 +105,11 @@ Here are the naming abreviation:
 4.  P -> H => `ACK`
 
 ## Unlock Car
-
+```
 |---|     |---|     |---|
-
 | H |<--->| C |<--->| P |
-
 |---|     |---|     |---|
-
+```
 #### Packet Sequence
 1. P -> C => `Establish Channel`
 2. C -> P => `Establish Channel Return`
