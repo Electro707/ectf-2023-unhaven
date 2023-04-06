@@ -94,14 +94,11 @@ void receive_board_uart(void);
 
 void returnNack(DATA_TRANSFER_T *host);
 void returnAck(DATA_TRANSFER_T *host);
+void resetComms(DATA_TRANSFER_T *host);
 
 void generate_send_message(DATA_TRANSFER_T *hosts, COMMAND_BYTE_e command, uint8_t *data, uint8_t len);
 
 void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public);
 void create_new_secure_comms(DATA_TRANSFER_T *host);
-
-void uart_debug_strln(const char *str);
-void uart_debug_number(uint32_t numb);
-void uart_debug_newline(void);
 
 #endif

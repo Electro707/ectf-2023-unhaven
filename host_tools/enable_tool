@@ -20,6 +20,8 @@ import common
 # @brief Function to send commands to enable a feature on a fob
 # @param fob_bridge, bridged serial connection to fob
 # @param package_name, name of the package file to read from
+# @param socket_host, the socket host for the bridge
+# @param package_dir, The feature package directory
 def enable(fob_bridge, package_name, socket_host, package_dir):
 
     # Connect fob socket to serial
@@ -69,7 +71,7 @@ def main():
         default="/package_dir",
     )
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     args = parser.parse_args()
 

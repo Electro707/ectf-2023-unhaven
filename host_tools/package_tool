@@ -24,6 +24,7 @@ SECRETS_JSON_PATH = "/secrets/secrets.json"
 # @param package_name, name of the file to output package data to
 # @param car_id, the id of the car the feature is being packaged for
 # @param feature_number, the feature number being packaged
+# @param package_dir, The feature package directory
 def package(package_name, car_id, feature_number, package_dir):
     with open(SECRETS_JSON_PATH, "r") as fhandle:
         secrets_json = json.load(fhandle)
@@ -32,8 +33,6 @@ def package(package_name, car_id, feature_number, package_dir):
     feature_encryption_key_iv = bytearray(secrets_json["feature_unlock_key_iv"])
     car_secret_bytes = bytearray(secrets_json[str(car_id)+"_secret"])
     aes_cipher = AES.new(feature_encryption_key, AES.MODE_CBC, iv=feature_encryption_key_iv)
-
-    print(car_secret_bytes)
 
     to_encrypt = bytearray(secrets.token_bytes(15))
     to_encrypt += car_secret_bytes

@@ -3,13 +3,10 @@
  * @author Kyle Scaplen
  * @brief Firmware UART interface implementation.
  * @date 2023
- *
- * This source file is part of an example system for MITRE's 2023 Embedded
- * System CTF (eCTF). This code is being provided only for educational purposes
- * for the 2023 MITRE eCTF competition, and may not meet MITRE standards for
- * quality. Use this code at your own risk!
- *
  * @copyright Copyright (c) 2023 The MITRE Corporation
+ * @copyright Copyright (c) Electro707
+ * 
+ * This file does everything UART related.
  */
 
 #include <stdbool.h>
@@ -89,28 +86,6 @@ void uart_init_board(void){
     UARTCharGet(BOARD_UART);
   }
 }
-
-#ifdef RUN_WITH_DEBUG_UART
-/**
- * Debug UART (used for debugging, duh!)
- *
- * Connected to PD6 and PD7
-*/
-void uart_init_debug(void){
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_UART4);
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
-
-  GPIOPinTypeUART(GPIO_PORTC_BASE, GPIO_PIN_4 | GPIO_PIN_5);
-
-  GPIOPinConfigure(GPIO_PC4_U4RX);
-  GPIOPinConfigure(GPIO_PC5_U4TX);
-
-  // Configure the UART for 115,200, 8-N-1 operation.
-  UARTConfigSetExpClk(
-      DEBUG_UART, SysCtlClockGet(), 115200,
-      (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
-}
-#endif
 
 /**
  * @brief Check if there are characters available on a UART interface.

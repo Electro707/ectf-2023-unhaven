@@ -52,7 +52,7 @@ const struct uECC_Curve_t * curve;
 void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
 void process_received_packet(DATA_TRANSFER_T *host);
 void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host);
-int get_random_bytes(uint8_t *buff, uint16_t len);
+int get_random_bytes(uint8_t *buff, unsigned int len);
 
 void setup_uart_links(void) {
   uart_init_host();
@@ -71,6 +71,8 @@ void setup_uart_links(void) {
  * Function that gets called when a packet is received for the host UART.
  * 
  * NOTE: Eventually switch this to interrupt
+ *       ^^ lol not happening. but if this firmware is to be used in a commercial product
+ *          then yes this should be, among many other things
  */
 void receive_board_uart(void){
   DATA_TRANSFER_T *host = &board_comms;
@@ -87,7 +89,12 @@ void receive_board_uart(void){
       host->state = RECEIVE_PACKET_STATE_DATA;
       break;
     case RECEIVE_PACKET_STATE_DATA:
-      host->buffer[host->buffer_index++] = uart_char;
+      host->buffer[host->buffer_index] = uart_char;
+      // The case below should never occur, but check it anyways
+      if(++host->buffer_index >= MAXIMUM_DATA_BUFFER){
+        // todo: handle errors gracefully
+        host->state = RECEIVE_PACKET_STATE_RESET;
+      }
       if(--host->packet_size == 2){ // If we are on our last packet
         host->state = RECEIVE_PACKET_STATE_CRC;
       }
@@ -106,8 +113,7 @@ void receive_board_uart(void){
 }
 
 /**
- * Function that processes any received packet, whether from host or fob or car, as the 
- * underlaying communication protocol is the same.
+ * Function that processes any received packet from the host
 */
 void process_received_packet(DATA_TRANSFER_T *host){
   if(host->buffer_index < 3){  // Smallest message must include at least ony byte and CRC
@@ -177,8 +183,8 @@ void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public){
 }
 
 void returnHostNack(void){
-  static const uint8_t *host_ack = "Car is not happy :(\n\0";
-  uart_write(HOST_UART, host_ack, sizeof(host_ack));
+  static char *host_ack = "Car is not happy :(\n\0";
+  uart_write(HOST_UART, (uint8_t *)host_ack, sizeof(host_ack));
 }
 
 /**
@@ -215,65 +221,48 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
   uart_write(host->uart_base, to_send_msg, msg_len);
 }
 
-uint32_t get_random_seed(){
-  return SysTickValueGet();
-}
-
-// // Temporary function for getting random bytes
-// int get_random_bytes(uint8_t *buff, uint16_t len){
-//   do{
-//     *buff++ = (uint8_t)(SysTickValueGet() & 0xFF);
-//   }while(--len > 0);
-//   return 1;
-// }
-
-int get_random_bytes(uint8_t *buff, uint16_t len){
+int get_random_bytes(uint8_t *buff, unsigned int len){
   uint8_t random_array[256];
   uint32_t temp;
 
   srand(SysTickValueGet());
 
-  // for (int i = 0; i < ITERATIONS; i++) {
-      uint32_t current_time;
-      uint8_t rand_time = ((uint8_t)rand() % 10) + 1;
-      SysCtlDelay(rand_time);
-      current_time = SysTickValueGet();
-      temp = rand();
+  uint32_t current_time;
+  uint8_t rand_time = ((uint8_t)rand() % 10) + 1;
+  SysCtlDelay(rand_time);
+  current_time = SysTickValueGet();
+  temp = rand();
 
-      // Hash temp using Blake2
-      blake2s_state hash_state;
-      blake2s_init(&hash_state, 16);  // 16-byte hash
-      blake2s_update(&hash_state, (uint8_t*)&temp, sizeof(temp));
-      uint8_t temp_hash[16];
-      blake2s_final(&hash_state, temp_hash, sizeof(temp_hash));
+  // Hash temp using Blake2
+  blake2s_state hash_state;
+  blake2s_init(&hash_state, 16);  // 16-byte hash
+  blake2s_update(&hash_state, (uint8_t*)&temp, sizeof(temp));
+  uint8_t temp_hash[16];
+  blake2s_final(&hash_state, temp_hash, sizeof(temp_hash));
 
-      // Hash time using Blake2
-      blake2s_init(&hash_state, 16);  // 16-byte hash
-      blake2s_update(&hash_state, (uint8_t*)&current_time, sizeof(current_time));
-      uint8_t time_hash[16];
-      blake2s_final(&hash_state, time_hash, sizeof(time_hash));
+  // Hash time using Blake2
+  blake2s_init(&hash_state, 16);  // 16-byte hash
+  blake2s_update(&hash_state, (uint8_t*)&current_time, sizeof(current_time));
+  uint8_t time_hash[16];
+  blake2s_final(&hash_state, time_hash, sizeof(time_hash));
 
-      // XOR current time and temperature
-      uint8_t time_temp_xor[4];
-      for (int j = 0; j < 16; j++) {
-          time_temp_xor[j % 4] ^= temp_hash[j] ^ time_hash[j];
-      }
+  // XOR current time and temperature
+  uint8_t time_temp_xor[4];
+  for (int j = 0; j < 16; j++) {
+      time_temp_xor[j % 4] ^= temp_hash[j] ^ time_hash[j];
+  }
 
-      // Generate an array of 256 8-bit numbers using hash as a random seed
+  // Generate an array of 256 8-bit numbers using hash as a random seed
+  srand(time_temp_xor[0] + (time_temp_xor[1] << 8) + (time_temp_xor[2] << 16) + (time_temp_xor[3] << 24));
+  for (int j = 0; j < 256; j++) {
+      random_array[j] = (uint8_t)rand();
+  }
 
-      srand(time_temp_xor[0] + (time_temp_xor[1] << 8) + (time_temp_xor[2] << 16) + (time_temp_xor[3] << 24));
-      for (int j = 0; j < 256; j++) {
-          random_array[j] = (uint8_t)rand();
-      }
-
-      // Randomly select 32 characters from the array and add them to the result character array
-      for (int j = 0; j < len; j++) {
-          uint8_t index = (uint8_t)rand();
-          buff[j] = random_array[index];
-          //printf("%c", random_array[index]);
-      }
-      //printf("\n");
-  // }
+  // Randomly select 32 characters from the array and add them to the result character array
+  for (int j = 0; j < len; j++) {
+      uint8_t index = (uint8_t)rand();
+      buff[j] = random_array[index];
+  }
 
 
   return 1;

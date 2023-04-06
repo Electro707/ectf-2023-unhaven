@@ -69,11 +69,17 @@ Here are the naming abreviation:
 
 ### Pair Fob Process
 |---|     |---|
+
 |   |<--->| P |<---\
+
 |   |     |---|    |
+
 | H |              |
+
 |   |     |---|    |
+
 |   |<--->| U |<---/
+
 |---|     |---|
 
 #### Packet Sequence
@@ -93,7 +99,9 @@ Here are the naming abreviation:
 
 ## Enable Feature
 |---|     |---|
+
 | H |<--->| P |
+
 |---|     |---|
 
 #### Packet Sequence
@@ -105,7 +113,9 @@ Here are the naming abreviation:
 ## Unlock Car
 
 |---|     |---|     |---|
+
 | H |<--->| C |<--->| P |
+
 |---|     |---|     |---|
 
 #### Packet Sequence

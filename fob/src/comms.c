@@ -57,7 +57,7 @@ void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts);
 void process_received_packet(DATA_TRANSFER_T *host);
 void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host);
 
-int get_random_bytes(uint8_t *buff, uint16_t len);
+int get_random_bytes(uint8_t *buff, unsigned int len);
 
 /**
  * @brief Set the up board link and car link UART
@@ -116,7 +116,7 @@ void receive_anything_uart(uint32_t uart_base, DATA_TRANSFER_T *host){
       break;
     case RECEIVE_PACKET_STATE_DATA:
       host->buffer[host->buffer_index] = uart_char;
-      // The case below should never occur, but handle it anyways
+      // The case below should never occur, but check it anyways
       if(++host->buffer_index >= MAXIMUM_DATA_BUFFER){
         // todo: handle errors gracefully
         host->state = RECEIVE_PACKET_STATE_RESET;
@@ -153,9 +153,6 @@ void process_received_packet(DATA_TRANSFER_T *host){
     // TODO: Raise error
     return;
   }
-
-  uart_debug_number(host->buffer[0]);
-  uart_debug_strln(" <- Received instruction");
   
   if(host->exchanged_ecdh == false){
     // TODO: If this is a board commands, do a sanity check whether it is right to start
@@ -164,14 +161,13 @@ void process_received_packet(DATA_TRANSFER_T *host){
       if(host->buffer_index == 1+ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES){   // Check size, which 
         generate_ecdh_local_keys(host);
         memcpy(host->aes_iv, host->buffer+1+ECDH_PUBLIC_KEY_BYTES, AES_IV_SIZE_BYTES);
-        // NOTE: This can be a vulnerability if buffer size is not right
         setup_secure_aes(host, &host->buffer[1]);
-        // TODO: Might have to re-do the aes key structure
         generate_send_message(host, COMMAND_BYTE_RETURN_OWN_ECDH, host->ecc_public, ECDH_PUBLIC_KEY_BYTES);
         host->exchanged_ecdh = true;
       }
       else{
         // todo: This returns as encrypted, while not having any encryption key
+        // this is left as an exercise to the user
         returnNack(host);
       }
     }
@@ -198,15 +194,27 @@ void process_received_packet(DATA_TRANSFER_T *host){
 
 }
 
+/**
+ * Function to generate the local ECDH keys
+*/
 void generate_ecdh_local_keys(DATA_TRANSFER_T *hosts){
   uECC_make_key(hosts->ecc_public, hosts->ecc_secret, curve);
 }
 
 /**
  * Function that returns a NACK and also ends any messaging
+ * and resets the message state to "normal mode"
 */
 void returnNack(DATA_TRANSFER_T *host){
   generate_send_message(host, COMMAND_BYTE_NACK, NULL, 0);
+  resetComms(host);
+}
+
+/**
+ * Function that resets communication, for one "host" at least
+ *  and sets the message state to reset
+*/
+void resetComms(DATA_TRANSFER_T *host){
   host->exchanged_ecdh = false;
   message_state = COMMAND_STATE_RESET;
 }
@@ -215,6 +223,10 @@ void returnAck(DATA_TRANSFER_T *host){
   generate_send_message(host, COMMAND_BYTE_ACK, NULL, 0);
 }
 
+/**
+ * Create a "secure" communication link by generating the ECDH key and IV and sends it over to the
+ *  other side
+*/
 void create_new_secure_comms(DATA_TRANSFER_T *host){
   uint8_t to_send[ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES];
   generate_ecdh_local_keys(host);
@@ -227,6 +239,9 @@ void create_new_secure_comms(DATA_TRANSFER_T *host){
   generate_send_message(host, COMMAND_BYTE_NEW_MESSAGE_ECDH, to_send, ECDH_PUBLIC_KEY_BYTES+AES_IV_SIZE_BYTES);
 }
 
+/**
+ * Function that sets up the AES encryption with the common ECDH key and IV
+*/
 void setup_secure_aes(DATA_TRANSFER_T *host, uint8_t *other_public){
   uECC_shared_secret(other_public, host->ecc_secret, host->aes_key, curve);
   AES_init_ctx_iv(&host->aes_ctx, host->aes_key, host->aes_iv);
@@ -267,61 +282,7 @@ void generate_send_message(DATA_TRANSFER_T *host, COMMAND_BYTE_e command, uint8_
   uart_write(host->uart_base, to_send_msg, msg_len);
 }
 
-#ifdef RUN_WITH_DEBUG_UART
-
-void uart_debug_strln(const char *str){
-  uart_write(DEBUG_UART, (uint8_t *)str, strlen(str));
-  uart_debug_newline();
-}
-
-void uart_debug_number(uint32_t numb){
-  char reversed_str[10];
-  char *reversed_str_index = reversed_str;
-
-  const volatile char *digits = "0123456789ABCDEF";
-
-  do
-  {
-    *reversed_str_index++ = digits[numb % 10];
-  } while ((numb /= 10) != 0);
-  
-  // Reverse string
-  for(reversed_str_index--;reversed_str_index >=reversed_str;reversed_str_index--){
-    uart_writeb(DEBUG_UART, *reversed_str_index);
-  }
-}
-
-void uart_debug_newline(void){
-  uart_writeb(DEBUG_UART, '\n');
-}
-
-#else
-
-void uart_debug_strln(const char *str){
-  // Do nothing if RUN_WITH_DEBUG_UART isn't set
-}
-void uart_debug_number(uint32_t numb){
-  // Do nothing if RUN_WITH_DEBUG_UART isn't set
-}
-void uart_debug_newline(void){
-  // Do nothing if RUN_WITH_DEBUG_UART isn't set
-}
-
-#endif
-
-uint32_t get_random_seed(){
-  return SysTickValueGet();
-}
-
-// // Temporary function for getting random bytes
-// int get_random_bytes(uint8_t *buff, uint16_t len){
-//   do{
-//     *buff++ = (uint8_t)(SysTickValueGet() & 0xFF);
-//   }while(--len > 0);
-//   return 1;
-// }
-
-int get_random_bytes(uint8_t *buff, uint16_t len){
+int get_random_bytes(uint8_t *buff, unsigned int len){
   uint8_t random_array[256];
   uint32_t temp;
 

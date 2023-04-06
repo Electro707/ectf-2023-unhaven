@@ -25,6 +25,7 @@ from cryptography.hazmat.primitives import hashes
 # @param unpairmed_fob_bridge, bridged serial connection to unpairmed fob
 # @param pairmed_fob_bridge, bridged serial connection to pairmed fob
 # @param pair_pin, pin used to pair a new fob
+# @param socket_host, the socket host for the bridge
 def pair(unpaired_fob_bridge, paired_fob_bridge, pair_pin, socket_host):
 
     # Connect to both sockets for serial
@@ -96,7 +97,7 @@ def main():
         "--socket-host", help="Program PIN", type=str, default="ectf-net",
     )
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     args = parser.parse_args()
 

@@ -1,3 +1,16 @@
+/**
+ * @file unewhaven.c
+ * @author Jamal Bouajjaj
+ * @brief A CRC for the UNewHaven fob implementation
+ * @date 2023
+ * @copyright Copyright (c) Electro707
+ * 
+ * This file really has one function: calculate_crc
+ * 
+ * I felt that it would be nice to have it in it's own file, so it is.
+ * The CRC is also known as MODBUS-16 CRC
+ */
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>

@@ -1,15 +1,10 @@
 /**
- * @file main.c
- * @author Frederich Stine
- * @brief eCTF Car Example Design Implementation
+ * @file firmware.c
+ * @author Jamal Bouajjaj
+ * @brief UNewHaven eCTF Car Design Implementation
  * @date 2023
- *
- * This source file is part of an example system for MITRE's 2023 Embedded
- * System CTF (eCTF). This code is being provided only for educational purposes
- * for the 2023 MITRE eCTF competition, and may not meet MITRE standards for
- * quality. Use this code at your own risk!
- *
  * @copyright Copyright (c) 2023 The MITRE Corporation
+ * @copyright Copyright (c) Electro707
  */
 
 #include <stdbool.h>
@@ -42,9 +37,7 @@
 #define FEATURE_SIZE 64
 
 /*** Function definitions ***/
-// Core functions - unlockCar and startCar
 int8_t unlockCar(unsigned char *msg);
-
 // Declare password
 const uint8_t car_secret[16] = CAR_SECRET;
 

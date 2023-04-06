@@ -1,15 +1,10 @@
 /**
- * @file main.c
- * @author Frederich Stine
- * @brief eCTF Fob Example Design Implementation
+ * @file firmware.c
+ * @author Jamal Bouajjaj
+ * @brief UNewHaven eCTF Fob Design Implementation
  * @date 2023
- *
- * This source file is part of an example system for MITRE's 2023 Embedded
- * System CTF (eCTF). This code is being provided only for educational purposes
- * for the 2023 MITRE eCTF competition, and may not meet MITRE standards for
- * quality. Use this code at your own risk!
- *
  * @copyright Copyright (c) 2023 The MITRE Corporation
+ * @copyright Copyright (c) Electro707
  */
 
 #include "firmware.h"
@@ -52,6 +47,7 @@ typedef struct
   uint8_t encrypted_pin[16];   // The hashed pin
   uint8_t car_secret[16];   // The car secret
   uint8_t feature_bitfield;
+  uint16_t padding;   // Padding so FLASH_DATA_SIZE is in word alignment
 } FLASH_DATA;
 
 COMMAND_STATE_e message_state = COMMAND_STATE_RESET;
@@ -124,17 +120,11 @@ int main(void)
   // Initialize board link UART
   setup_uart_links();
 
-#ifdef RUN_WITH_DEBUG_UART
-  uart_init_debug();
-#endif
-
   // Setup SW1
   GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);
   GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_4MA,
                    GPIO_PIN_TYPE_STD_WPU);
   
-  uart_debug_strln("Started Program!3\0");
-
   uint8_t previous_sw_state = GPIO_PIN_4;
   uint8_t debounce_sw_state = GPIO_PIN_4;
   uint8_t current_sw_state = GPIO_PIN_4;
@@ -190,7 +180,9 @@ void process_host_uart(void){
     case COMMAND_BYTE_PAIRED_IN_PAIRING_MODE:
       if(get_if_paired() == 1){
         // TODO: Add pairing mode state
+        message_state = COMMAND_STATE_IN_PAIRING_MODE;
         returnAck(host);
+        host->exchanged_ecdh = false;   // End communication with host as we no longer need it
       }
       else{
         returnNack(host);
@@ -224,8 +216,7 @@ void process_host_uart(void){
       stat = process_received_new_feature(host->buffer+1);
       if(stat == 0){
         returnAck(host);
-        host->exchanged_ecdh = false;
-        message_state = COMMAND_STATE_RESET;
+        resetComms(host);
       }
       else{
         returnNack(host);
@@ -244,7 +235,6 @@ void process_board_uart(void){
     case COMMAND_BYTE_RETURN_OWN_ECDH:
       // This can happen either because we are a unpaired fob and just established comms with paired fob,
       // Or we are a paired fob trying to communicate with a car
-      // TODO: Add general check around message_state
       if(host->buffer_index != 1+ECDH_PUBLIC_KEY_BYTES){
         // Return a NACK to the host as well if we fail ECDH and we are pairing
         if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
@@ -255,10 +245,8 @@ void process_board_uart(void){
       }
       host->exchanged_ecdh = true;
       setup_secure_aes(host, &host->buffer[1]);
-      // TODO: Initialize the internal AES context with generated key
       if(message_state == COMMAND_STATE_WAITING_FOR_PAIRED_ECDH){
         // We send out our hashed pairing key in order to get the secret
-        // TODO: Add check
         AES_ECB_encrypt(&pin_unlock_aes, unpaired_received_pin);
         generate_send_message(host, COMMAND_BYTE_GET_SECRET, unpaired_received_pin, 16);
         message_state = COMMAND_STATE_WAITING_FOR_SECRET;
@@ -266,8 +254,7 @@ void process_board_uart(void){
       else if(message_state == COMMAND_STATE_WAITING_FOR_CAR_ECDH){
         sendCarUnlockToken();
         // For now the fob does nothing about any return statement, so do nothing...
-        host->exchanged_ecdh = false;
-        message_state = COMMAND_STATE_RESET;
+        resetComms(host);
       }
       else{
         returnNack(host);
@@ -281,9 +268,15 @@ void process_board_uart(void){
         returnNack(host);
         break;
       }
+      // if(message_state != COMMAND_STATE_IN_PAIRING_MODE){
+      //   returnNack(host);
+      //   break;
+      // }
       if(memcmp(fob_state_ram.encrypted_pin, host->buffer+1, 16) == 0){
         // We now need to send the secrets to the unpaired fob
         generate_send_message(host, COMMAND_BYTE_RETURN_SECRET, fob_state_ram.car_secret, 16);
+        // reset coms
+        resetComms(host);
       }
       else{
         returnNack(host);
@@ -296,24 +289,24 @@ void process_board_uart(void){
         returnNack(&host_comms);
         break;
       }
+      // Copy the encrypted pin and the car secret, and paired state internally.
       memcpy(fob_state_ram.encrypted_pin, unpaired_received_pin, 16);
       memcpy(fob_state_ram.car_secret, &host->buffer[1], 16);
       fob_state_ram.paired = PAIRED_STATE_PAIRED;
+      // Store the new fob stuff in FLASH
       saveFobState(&fob_state_ram);
       // Send a pairing done to the host
       generate_send_message(&host_comms, COMMAND_BYTE_PAIRING_DONE, NULL, 0);
-      message_state = COMMAND_STATE_RESET;
-      host->exchanged_ecdh = false;
+      resetComms(host);
       host_comms.exchanged_ecdh = false;
       break;
     case COMMAND_BYTE_NACK:
       // I mean there isn't much to do here, other than reset
-      host->exchanged_ecdh = false;
-      message_state = COMMAND_STATE_RESET;
       // If we got a NACK from the other paired fob, let the host know about it
       if(message_state == COMMAND_STATE_WAITING_FOR_SECRET){
         returnNack(&host_comms);
       }
+      resetComms(host);
       break;
     default:
       // TODO: Do something, probably
@@ -343,15 +336,12 @@ int8_t process_received_new_feature(uint8_t *data){
 */
 void startUnlockCar(void){
   if(get_if_paired() != 1){
-    uart_debug_strln("Not Paired");
     return;
   }
   if(message_state != COMMAND_STATE_RESET){
-    uart_debug_strln("Not in comm reset");
     return;
   }
   // Start ECDH with car
-  uart_debug_strln("Unlocking Car!!");
   create_new_secure_comms(&board_comms);
   message_state = COMMAND_STATE_WAITING_FOR_CAR_ECDH;
 }

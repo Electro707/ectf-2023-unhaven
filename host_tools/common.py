@@ -1,4 +1,31 @@
 #!/usr/bin/python3 -u
+"""
+A common Python class for fob connections.
+
+This module handles any encryption and decryption, as well as some common stuff like ACK reception
+
+
+Also there is an impostor among us
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣤⣤⣤⣤⣤⣶⣦⣤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⡿⠛⠉⠙⠛⠛⠛⠛⠻⢿⣿⣷⣤⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⠋⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⠈⢻⣿⣿⡄⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣸⣿⡏⠀⠀⠀⣠⣶⣾⣿⣿⣿⠿⠿⠿⢿⣿⣿⣿⣄⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⠁⠀⠀⢰⣿⣿⣯⠁⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⣷⡄⠀
+⠀⠀⣀⣤⣴⣶⣶⣿⡟⠀⠀⠀⢸⣿⣿⣿⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣷⠀
+⠀⢰⣿⡟⠋⠉⣹⣿⡇⠀⠀⠀⠘⣿⣿⣿⣿⣷⣦⣤⣤⣤⣶⣶⣶⣶⣿⣿⣿⠀
+⠀⢸⣿⡇⠀⠀⣿⣿⡇⠀⠀⠀⠀⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠃⠀
+⠀⣸⣿⡇⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠉⠻⠿⣿⣿⣿⣿⡿⠿⠿⠛⢻⣿⡇⠀⠀
+⠀⣿⣿⠁⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣧⠀⠀
+⠀⣿⣿⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⠀⠀
+⠀⣿⣿⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⠀⠀
+⠀⢿⣿⡆⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀
+⠀⠸⣿⣧⡀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⠃⠀⠀
+⠀⠀⠛⢿⣿⣿⣿⣿⣇⠀⠀⠀⠀⠀⣰⣿⣿⣷⣶⣶⣶⣶⠶⠀⢠⣿⣿⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⣽⣿⡏⠁⠀⠀⢸⣿⡇⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⢹⣿⡆⠀⠀⠀⣸⣿⠇⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢿⣿⣦⣄⣀⣠⣴⣿⣿⠁⠀⠈⠻⣿⣿⣿⣿⡿⠏⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠈⠛⠻⠿⠿⠿⠿⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+"""
 
 import socket
 import struct
@@ -27,6 +54,9 @@ class FobConnection:
         self.cipher = None      # type: Cipher
 
     def receive_frame(self, encrypted: bool = True) -> bytes:
+        """
+        Receives a frame as per specification and decrypts the data if there is a need for it
+        """
         data_len = self._receive_until(1)
         self.log.debug("Data len received: %s", data_len)
         data_len = int.from_bytes(data_len, 'big')
@@ -49,11 +79,13 @@ class FobConnection:
         if encrypted:
             dec = self.cipher.decryptor()
             data = dec.update(data) + dec.finalize()
-            self.log.debug("Data after decryption %s", data)
 
         return data
 
     def send_packet(self, command: int, data: bytes = bytes()):
+        """
+        Sends a packet (command and data) over
+        """
         to_send_p = bytearray()
         to_send_p.append(command)
         to_send_p += data
@@ -61,6 +93,9 @@ class FobConnection:
         self.send_frame(to_send_p)
 
     def send_frame(self, data: bytes, encrypted: bool = True):
+        """
+        Packs up a frame per specification, encrypts it if desired, and sends it over
+        """
         data_len = len(data)
         self.log.debug("Sending Data %s", data)
 
@@ -88,11 +123,17 @@ class FobConnection:
         self.s.send(to_send)
 
     def wait_for_ack(self):
+        """
+        And now...we wait. For an ACK that is
+        """
         d = self.receive_frame()
         if d[0] != 0x41:
             raise ReadException()
 
     def ecdh_exchange(self):
+        """
+        Function that does the ECDH exchange
+        """
         own_key = ec.generate_private_key(ec.SECP192R1())
         self_public = own_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)[1:]
 
@@ -111,11 +152,12 @@ class FobConnection:
 
         self.aes_key = own_key.exchange(ec.ECDH(), other_public)
 
-        self.log.debug('Shared Key: %s', self.aes_key)
-
         self.cipher = Cipher(algorithms.AES(self.aes_key), modes.CBC(self.aes_iv))
 
     def _receive_until(self, n: int):
+        """
+        Internal function that receives bytes until n bytes is received
+        """
         d = bytearray()
         while n > 0:
             d += self.s.recv(1)
