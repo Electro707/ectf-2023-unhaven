@@ -47,3 +47,4 @@ The firmware, in my (Electro707) opinion, is not production ready (i.e to go in 
 - Have cleaner data handling cases, and probably more of them (instead of assuming the input must be the correct format)
 - Re-vamp the protocol to have a pre-fix/defined header (so the firmware knows that is start-of-frame)
 - Have the tools have better exception handling
+- Have a common source file for the firmware that is common to both the car and fob (instead of a copy)
