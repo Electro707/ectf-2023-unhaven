@@ -1,5 +1,5 @@
-# ECTF 2023 UNewHaven Protocol
-This document gives an overview of the protcol used in this ECTF 2023 competition.
+# eCTF 2023 UNewHaven Protocol
+This document gives an overview of the protocol used in this eCTF 2023 competition.
 
 ## Frame
 Each message will be packed in a frame. Each frame will have the following format (exceptions are noted):
@@ -22,7 +22,7 @@ Each message will be packed in a frame. Each frame will have the following forma
 ## Secrets
 The following secrets will be flashed per fob:
 - **Feature AES Key (24 bytes)**: A key to decryption a feature data
-- **Pin AES Key (24 bytes)**: A key that is used to encrypte a pin, which is how it's stored internally to the fob
+- **Pin AES Key (24 bytes)**: A key that is used to encrypt a pin, which is how it's stored internally to the fob
 
 The following secrets will be flashed per car and fob pair:
 - **Car Unlock Secret (16 bytes)**: A secret key that is used to authenticate a fob
@@ -62,7 +62,7 @@ This data is then encrypted with a Feature Encryption Key that is unique and sto
 ## Transactions
 The following section describes the different possible transactions
 
-Here are the naming abreviation:
+Here are the naming abbreviation:
 - U -> Unpaired Fob
 - P -> Paired Fob
 - H -> Host
